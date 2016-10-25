@@ -1,40 +1,48 @@
 # $Id$
 # Maintainer: Matthew Wardrop <mister.wardrop@gmail.com>
+#
+# all customized block marked 'XXX:surfacepro3'
 
 pkgbase=linux-surfacepro3
-_srcname=linux-4.6
-pkgver=4.6
+_srcname=linux-4.8
+pkgver=4.8.4
 pkgrel=1
 arch=('i686' 'x86_64')
 url="https://github.com/matthewwardrop/linux-surfacepro3"
 license=('GPL2')
-makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'elfutils')
+makedepends=('xmlto' 'docbook-xsl' 'kmod' 'inetutils' 'bc' 'libelf')
 options=('!strip')
 source=("https://www.kernel.org/pub/linux/kernel/v4.x/${_srcname}.tar.xz"
         "https://www.kernel.org/pub/linux/kernel/v4.x/${_srcname}.tar.sign"
-        #"https://www.kernel.org/pub/linux/kernel/v4.x/patch-${pkgver}.xz"
-        #"https://www.kernel.org/pub/linux/kernel/v4.x/patch-${pkgver}.sign"
+        "https://www.kernel.org/pub/linux/kernel/v4.x/patch-${pkgver}.xz"
+        "https://www.kernel.org/pub/linux/kernel/v4.x/patch-${pkgver}.sign"
         # the main kernel config files
         'config' 'config.x86_64'
         # standard config files for mkinitcpio ramdisk
         'linux.preset'
         'change-default-console-loglevel.patch'
+        # XXX:surfacepro3 {
+        # order in applying
+	'wifi.patch'
         'multitouch.patch'
-	'touchscreen_multitouch_fixes1.patch'
-	'touchscreen_multitouch_fixes2.patch'
-	'wifi.patch')
+	'touchscreen_multitouch.patch'
+        # XXX:surfacepro3 }
+        )
 
-sha256sums=('a93771cd5a8ad27798f22e9240538dfea48d3a2bf2a6a6ab415de3f02d25d866'
+sha256sums=('3e9150065f193d3d94bcf46a1fe9f033c7ef7122ab71d75a7fb5a2f0c9a7e11a'
             'SKIP'
-            'b32a4fbd92cf561bca86bb65319a16be853fb8ea7bdd5f12974bd0d054d4c1f9'
-            'e91660a413baa66fb3269f03ceb85bda1df493b2fec404e9bb0269ad9a2d67a8'
+            '86e246b19253ee3aa971403a5990376a5e33667122f7c8742cc0ee807f204403'
+            'SKIP'
+            '2ac8818414beb7dbacbd3ad450c516e6ada804827132a7132f63b8189e5f5151'
+            '93a4ad4f6c7bb9296fddec436ed7477a5a5c11cf4d6e68482fa6610442cbcb1f'
             'f0d90e756f14533ee67afda280500511a62465b4f76adcc5effa95a40045179c'
             '1256b241cd477b265a3c2d64bdc19ffe3c9bbcee82ea3994c590c2c76e767d99'
-            '3a4722981f689225a0ad550e45d829fcc3ca29d4258df3c6c989a916199e1c08'
-            'cc78e8844d9ec4bd29cce392a3e4683061646e1ad7c100c4958a5cadabb25b52'
-            '34b4e00ffcf9efc43ab47444d14febb94432d340d0f1d5bcd56153879d1be113'
-            '2e070646c2e23a504208af21457e5d9d3d181a0af7a234e813200eadeaa70669')
-
+            # XXX:surfacepro3 {
+            'f4994e5bd7518118d43dceca4f20b36c713c856a414340e1d611428d46334ffe'
+            'e41babe517c726c6fa837103c03c569beb74126bff09cca8e493832e29541245'
+            '9905538886f8e8ecbb56976c34b56a3ecb3bb73ffb9ae50a94cc137ee896de6c'
+            # XXX:surfacepro3 }
+            )
 validpgpkeys=(
               'ABAF11C65A2970B130ABE3C479BE3E4300411886' # Linus Torvalds
               '647F28654894E3BD457199BE38DBBDC86092693E' # Greg Kroah-Hartman
@@ -47,7 +55,7 @@ prepare() {
   cd "${srcdir}/${_srcname}"
 
   # add upstream patch
-  #patch -p1 -i "${srcdir}/patch-${pkgver}"
+  patch -p1 -i "${srcdir}/patch-${pkgver}"
 
   # add latest fixes from stable queue, if needed
   # http://git.kernel.org/?p=linux/kernel/git/stable/stable-queue.git
@@ -57,7 +65,9 @@ prepare() {
   # (relevant patch sent upstream: https://lkml.org/lkml/2011/7/26/227)
   patch -p1 -i "${srcdir}/change-default-console-loglevel.patch"
 
+  # XXX:surfacepro3 {
   # This patch disables some wireless optimisations which cause trouble on Surface devices.
+  # TODO remove this patch, it seems resolve the problem from kernel 4.9 (https://bugzilla.kernel.org/show_bug.cgi?id=109681)
   patch -p1 -i "${srcdir}/wifi.patch"
 
   # This patch adds multitouch support for the surface pro 3
@@ -68,8 +78,8 @@ prepare() {
 
   # These patches work around buggy hardware implementations
   # in the surface pro 3 touchscreen module.
-  patch -p1 -i "${srcdir}/touchscreen_multitouch_fixes1.patch"
-  patch -p1 -i "${srcdir}/touchscreen_multitouch_fixes2.patch"
+  patch -p1 -i "${srcdir}/touchscreen_multitouch.patch"
+  # XXX:surfacepro3 }
 
   if [ "${CARCH}" = "x86_64" ]; then
     cat "${srcdir}/config.x86_64" > ./.config
@@ -165,7 +175,7 @@ _package() {
   mv "${pkgdir}/lib" "${pkgdir}/usr/"
 
   # add vmlinux
-  install -D -m644 vmlinux "${pkgdir}/usr/lib/modules/${_kernver}/build/vmlinux"
+  install -D -m644 vmlinux "${pkgdir}/usr/lib/modules/${_kernver}/build/vmlinux" 
 }
 
 _package-headers() {
@@ -184,7 +194,7 @@ _package-headers() {
   mkdir -p "${pkgdir}/usr/lib/modules/${_kernver}/build/include"
 
   for i in acpi asm-generic config crypto drm generated keys linux math-emu \
-    media net pcmcia scsi sound trace uapi video xen; do
+    media net pcmcia scsi soc sound trace uapi video xen; do
     cp -a include/${i} "${pkgdir}/usr/lib/modules/${_kernver}/build/include/"
   done
 
@@ -269,7 +279,7 @@ _package-headers() {
   # add objtool for external module building and enabled VALIDATION_STACK option
   if [ -f tools/objtool/objtool ];  then
       mkdir -p "${pkgdir}/usr/lib/modules/${_kernver}/build/tools/objtool"
-      cp -a tools/objtool/objtool ${pkgdir}/usr/lib/modules/${_kernver}/build/tools/objtool/
+      cp -a tools/objtool/objtool ${pkgdir}/usr/lib/modules/${_kernver}/build/tools/objtool/ 
   fi
 
   chown -R root.root "${pkgdir}/usr/lib/modules/${_kernver}/build"
@@ -289,7 +299,7 @@ _package-headers() {
 
   # remove unneeded architectures
   rm -rf "${pkgdir}"/usr/lib/modules/${_kernver}/build/arch/{alpha,arc,arm,arm26,arm64,avr32,blackfin,c6x,cris,frv,h8300,hexagon,ia64,m32r,m68k,m68knommu,metag,mips,microblaze,mn10300,openrisc,parisc,powerpc,ppc,s390,score,sh,sh64,sparc,sparc64,tile,unicore32,um,v850,xtensa}
-
+  
   # remove a files already in linux-docs package
   rm -f "${pkgdir}/usr/lib/modules/${_kernver}/build/Documentation/kbuild/Kconfig.recursion-issue-01"
   rm -f "${pkgdir}/usr/lib/modules/${_kernver}/build/Documentation/kbuild/Kconfig.recursion-issue-02"
