@@ -1,0 +1,2235 @@
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11h.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/11h.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/11h.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/11h.c	2016-10-26 18:17:41.000000000 +0900
+@@ -260,22 +260,17 @@ int mwifiex_11h_handle_radar_detected(st
+ 
+ 	rdr_event = (void *)(skb->data + sizeof(u32));
+ 
+-	if (le32_to_cpu(rdr_event->passed)) {
+-		mwifiex_dbg(priv->adapter, MSG,
+-			    "radar detected; indicating kernel\n");
+-		if (mwifiex_stop_radar_detection(priv, &priv->dfs_chandef))
+-			mwifiex_dbg(priv->adapter, ERROR,
+-				    "Failed to stop CAC in FW\n");
+-		cfg80211_radar_event(priv->adapter->wiphy, &priv->dfs_chandef,
+-				     GFP_KERNEL);
+-		mwifiex_dbg(priv->adapter, MSG, "regdomain: %d\n",
+-			    rdr_event->reg_domain);
+-		mwifiex_dbg(priv->adapter, MSG, "radar detection type: %d\n",
+-			    rdr_event->det_type);
+-	} else {
+-		mwifiex_dbg(priv->adapter, MSG,
+-			    "false radar detection event!\n");
+-	}
++	mwifiex_dbg(priv->adapter, MSG,
++		    "radar detected; indicating kernel\n");
++	if (mwifiex_stop_radar_detection(priv, &priv->dfs_chandef))
++		mwifiex_dbg(priv->adapter, ERROR,
++			    "Failed to stop CAC in FW\n");
++	cfg80211_radar_event(priv->adapter->wiphy, &priv->dfs_chandef,
++			     GFP_KERNEL);
++	mwifiex_dbg(priv->adapter, MSG, "regdomain: %d\n",
++		    rdr_event->reg_domain);
++	mwifiex_dbg(priv->adapter, MSG, "radar detection type: %d\n",
++		    rdr_event->det_type);
+ 
+ 	return 0;
+ }
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n.h
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n.h	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n.h	2016-10-26 18:17:41.000000000 +0900
+@@ -171,9 +171,10 @@ mwifiex_find_stream_to_delete(struct mwi
+ static inline int mwifiex_is_sta_11n_enabled(struct mwifiex_private *priv,
+ 					     struct mwifiex_sta_node *node)
+ {
+-
+-	if (!node || (priv->bss_role != MWIFIEX_BSS_ROLE_UAP) ||
+-	    !priv->ap_11n_enabled)
++	if (!node || ((priv->bss_role == MWIFIEX_BSS_ROLE_UAP) &&
++		      !priv->ap_11n_enabled) ||
++	    ((priv->bss_mode == NL80211_IFTYPE_ADHOC) &&
++	     !priv->adapter->adhoc_11n_enabled))
+ 		return 0;
+ 
+ 	return node->is_11n_enabled;
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c	2016-10-26 18:17:41.000000000 +0900
+@@ -78,8 +78,15 @@ static int mwifiex_11n_dispatch_amsdu_pk
+  */
+ static int mwifiex_11n_dispatch_pkt(struct mwifiex_private *priv, void *payload)
+ {
+-	int ret = mwifiex_11n_dispatch_amsdu_pkt(priv, payload);
+ 
++	int ret;
++
++	if (!payload) {
++		mwifiex_dbg(priv->adapter, INFO, "info: fw drop data\n");
++		return 0;
++	}
++
++	ret = mwifiex_11n_dispatch_amsdu_pkt(priv, payload);
+ 	if (!ret)
+ 		return 0;
+ 
+@@ -921,3 +928,72 @@ void mwifiex_coex_ampdu_rxwinsize(struct
+ 	else
+ 		mwifiex_update_ampdu_rxwinsize(adapter, false);
+ }
++
++/* This function handles rxba_sync event
++ */
++void mwifiex_11n_rxba_sync_event(struct mwifiex_private *priv,
++				 u8 *event_buf, u16 len)
++{
++	struct mwifiex_ie_types_rxba_sync *tlv_rxba = (void *)event_buf;
++	u16 tlv_type, tlv_len;
++	struct mwifiex_rx_reorder_tbl *rx_reor_tbl_ptr;
++	u8 i, j;
++	u16 seq_num, tlv_seq_num, tlv_bitmap_len;
++	int tlv_buf_left = len;
++	int ret;
++	u8 *tmp;
++
++	mwifiex_dbg_dump(priv->adapter, EVT_D, "RXBA_SYNC event:",
++			 event_buf, len);
++	while (tlv_buf_left >= sizeof(*tlv_rxba)) {
++		tlv_type = le16_to_cpu(tlv_rxba->header.type);
++		tlv_len  = le16_to_cpu(tlv_rxba->header.len);
++		if (tlv_type != TLV_TYPE_RXBA_SYNC) {
++			mwifiex_dbg(priv->adapter, ERROR,
++				    "Wrong TLV id=0x%x\n", tlv_type);
++			return;
++		}
++
++		tlv_seq_num = le16_to_cpu(tlv_rxba->seq_num);
++		tlv_bitmap_len = le16_to_cpu(tlv_rxba->bitmap_len);
++		mwifiex_dbg(priv->adapter, INFO,
++			    "%pM tid=%d seq_num=%d bitmap_len=%d\n",
++			    tlv_rxba->mac, tlv_rxba->tid, tlv_seq_num,
++			    tlv_bitmap_len);
++
++		rx_reor_tbl_ptr =
++			mwifiex_11n_get_rx_reorder_tbl(priv, tlv_rxba->tid,
++						       tlv_rxba->mac);
++		if (!rx_reor_tbl_ptr) {
++			mwifiex_dbg(priv->adapter, ERROR,
++				    "Can not find rx_reorder_tbl!");
++			return;
++		}
++
++		for (i = 0; i < tlv_bitmap_len; i++) {
++			for (j = 0 ; j < 8; j++) {
++				if (tlv_rxba->bitmap[i] & (1 << j)) {
++					seq_num = (MAX_TID_VALUE - 1) &
++						(tlv_seq_num + i * 8 + j);
++
++					mwifiex_dbg(priv->adapter, ERROR,
++						    "drop packet,seq=%d\n",
++						    seq_num);
++
++					ret = mwifiex_11n_rx_reorder_pkt
++					(priv, seq_num, tlv_rxba->tid,
++					 tlv_rxba->mac, 0, NULL);
++
++					if (ret)
++						mwifiex_dbg(priv->adapter,
++							    ERROR,
++							    "Fail to drop packet");
++				}
++			}
++		}
++
++		tlv_buf_left -= (sizeof(*tlv_rxba) + tlv_len);
++		tmp = (u8 *)tlv_rxba + tlv_len + sizeof(*tlv_rxba);
++		tlv_rxba = (struct mwifiex_ie_types_rxba_sync *)tmp;
++	}
++}
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h	2016-10-26 18:17:41.000000000 +0900
+@@ -81,5 +81,6 @@ struct mwifiex_rx_reorder_tbl *
+ mwifiex_11n_get_rx_reorder_tbl(struct mwifiex_private *priv, int tid, u8 *ta);
+ void mwifiex_11n_del_rx_reorder_tbl_by_ta(struct mwifiex_private *priv, u8 *ta);
+ void mwifiex_update_rxreor_flags(struct mwifiex_adapter *adapter, u8 flags);
+-
++void mwifiex_11n_rxba_sync_event(struct mwifiex_private *priv,
++				 u8 *event_buf, u16 len);
+ #endif /* _MWIFIEX_11N_RXREORDER_H_ */
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/cfg80211.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/cfg80211.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/cfg80211.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/cfg80211.c	2016-10-26 18:17:41.000000000 +0900
+@@ -484,6 +484,29 @@ mwifiex_cfg80211_add_key(struct wiphy *w
+ }
+ 
+ /*
++ * CFG802.11 operation handler to set default mgmt key.
++ */
++static int
++mwifiex_cfg80211_set_default_mgmt_key(struct wiphy *wiphy,
++				      struct net_device *netdev,
++				      u8 key_index)
++{
++	struct mwifiex_private *priv = mwifiex_netdev_get_priv(netdev);
++	struct mwifiex_ds_encrypt_key encrypt_key;
++
++	wiphy_dbg(wiphy, "set default mgmt key, key index=%d\n", key_index);
++
++	memset(&encrypt_key, 0, sizeof(struct mwifiex_ds_encrypt_key));
++	encrypt_key.key_len = WLAN_KEY_LEN_CCMP;
++	encrypt_key.key_index = key_index;
++	encrypt_key.is_igtk_def_key = true;
++	eth_broadcast_addr(encrypt_key.mac_addr);
++
++	return mwifiex_send_cmd(priv, HostCmd_CMD_802_11_KEY_MATERIAL,
++				HostCmd_ACT_GEN_SET, true, &encrypt_key, true);
++}
++
++/*
+  * This function sends domain information to the firmware.
+  *
+  * The following information are passed to the firmware -
+@@ -2012,10 +2035,6 @@ mwifiex_cfg80211_disconnect(struct wiphy
+ 	if (mwifiex_deauthenticate(priv, NULL))
+ 		return -EFAULT;
+ 
+-	mwifiex_dbg(priv->adapter, MSG,
+-		    "info: successfully disconnected from %pM:\t"
+-		    "reason code %d\n", priv->cfg_bssid, reason_code);
+-
+ 	eth_zero_addr(priv->cfg_bssid);
+ 	priv->hs2_enabled = false;
+ 
+@@ -2485,6 +2504,16 @@ mwifiex_cfg80211_scan(struct wiphy *wiph
+ 
+ 	priv->scan_request = request;
+ 
++	if (request->flags & NL80211_SCAN_FLAG_RANDOM_ADDR) {
++		ether_addr_copy(priv->random_mac, request->mac_addr);
++		for (i = 0; i < ETH_ALEN; i++) {
++			priv->random_mac[i] &= request->mac_addr_mask[i];
++			priv->random_mac[i] |= get_random_int() &
++					       ~(request->mac_addr_mask[i]);
++		}
++	}
++
++	ether_addr_copy(user_scan_cfg->random_mac, priv->random_mac);
+ 	user_scan_cfg->num_ssids = request->n_ssids;
+ 	user_scan_cfg->ssid_list = request->ssids;
+ 
+@@ -2726,7 +2755,7 @@ mwifiex_setup_ht_caps(struct ieee80211_s
+ 		ht_info->cap &= ~IEEE80211_HT_CAP_SGI_40;
+ 
+ 	if (adapter->user_dev_mcs_support == HT_STREAM_2X2)
+-		ht_info->cap |= 3 << IEEE80211_HT_CAP_RX_STBC_SHIFT;
++		ht_info->cap |= 2 << IEEE80211_HT_CAP_RX_STBC_SHIFT;
+ 	else
+ 		ht_info->cap |= 1 << IEEE80211_HT_CAP_RX_STBC_SHIFT;
+ 
+@@ -3913,6 +3942,88 @@ static int mwifiex_cfg80211_get_channel(
+ 	return ret;
+ }
+ 
++#ifdef CONFIG_NL80211_TESTMODE
++
++enum mwifiex_tm_attr {
++	__MWIFIEX_TM_ATTR_INVALID	= 0,
++	MWIFIEX_TM_ATTR_CMD		= 1,
++	MWIFIEX_TM_ATTR_DATA		= 2,
++
++	/* keep last */
++	__MWIFIEX_TM_ATTR_AFTER_LAST,
++	MWIFIEX_TM_ATTR_MAX		= __MWIFIEX_TM_ATTR_AFTER_LAST - 1,
++};
++
++static const struct nla_policy mwifiex_tm_policy[MWIFIEX_TM_ATTR_MAX + 1] = {
++	[MWIFIEX_TM_ATTR_CMD]		= { .type = NLA_U32 },
++	[MWIFIEX_TM_ATTR_DATA]		= { .type = NLA_BINARY,
++					    .len = MWIFIEX_SIZE_OF_CMD_BUFFER },
++};
++
++enum mwifiex_tm_command {
++	MWIFIEX_TM_CMD_HOSTCMD	= 0,
++};
++
++static int mwifiex_tm_cmd(struct wiphy *wiphy, struct wireless_dev *wdev,
++			  void *data, int len)
++{
++	struct mwifiex_private *priv = mwifiex_netdev_get_priv(wdev->netdev);
++	struct mwifiex_ds_misc_cmd *hostcmd;
++	struct nlattr *tb[MWIFIEX_TM_ATTR_MAX + 1];
++	struct mwifiex_adapter *adapter;
++	struct sk_buff *skb;
++	int err;
++
++	if (!priv)
++		return -EINVAL;
++	adapter = priv->adapter;
++
++	err = nla_parse(tb, MWIFIEX_TM_ATTR_MAX, data, len,
++			mwifiex_tm_policy);
++	if (err)
++		return err;
++
++	if (!tb[MWIFIEX_TM_ATTR_CMD])
++		return -EINVAL;
++
++	switch (nla_get_u32(tb[MWIFIEX_TM_ATTR_CMD])) {
++	case MWIFIEX_TM_CMD_HOSTCMD:
++		if (!tb[MWIFIEX_TM_ATTR_DATA])
++			return -EINVAL;
++
++		hostcmd = kzalloc(sizeof(*hostcmd), GFP_KERNEL);
++		if (!hostcmd)
++			return -ENOMEM;
++
++		hostcmd->len = nla_len(tb[MWIFIEX_TM_ATTR_DATA]);
++		memcpy(hostcmd->cmd, nla_data(tb[MWIFIEX_TM_ATTR_DATA]),
++		       hostcmd->len);
++
++		if (mwifiex_send_cmd(priv, 0, 0, 0, hostcmd, true)) {
++			dev_err(priv->adapter->dev, "Failed to process hostcmd\n");
++			return -EFAULT;
++		}
++
++		/* process hostcmd response*/
++		skb = cfg80211_testmode_alloc_reply_skb(wiphy, hostcmd->len);
++		if (!skb)
++			return -ENOMEM;
++		err = nla_put(skb, MWIFIEX_TM_ATTR_DATA,
++			      hostcmd->len, hostcmd->cmd);
++		if (err) {
++			kfree_skb(skb);
++			return -EMSGSIZE;
++		}
++
++		err = cfg80211_testmode_reply(skb);
++		kfree(hostcmd);
++		return err;
++	default:
++		return -EOPNOTSUPP;
++	}
++}
++#endif
++
+ static int
+ mwifiex_cfg80211_start_radar_detection(struct wiphy *wiphy,
+ 				       struct net_device *dev,
+@@ -3994,6 +4105,7 @@ static struct cfg80211_ops mwifiex_cfg80
+ 	.leave_ibss = mwifiex_cfg80211_leave_ibss,
+ 	.add_key = mwifiex_cfg80211_add_key,
+ 	.del_key = mwifiex_cfg80211_del_key,
++	.set_default_mgmt_key = mwifiex_cfg80211_set_default_mgmt_key,
+ 	.mgmt_tx = mwifiex_cfg80211_mgmt_tx,
+ 	.mgmt_frame_register = mwifiex_cfg80211_mgmt_frame_register,
+ 	.remain_on_channel = mwifiex_cfg80211_remain_on_channel,
+@@ -4025,6 +4137,7 @@ static struct cfg80211_ops mwifiex_cfg80
+ 	.tdls_cancel_channel_switch = mwifiex_cfg80211_tdls_cancel_chan_switch,
+ 	.add_station = mwifiex_cfg80211_add_station,
+ 	.change_station = mwifiex_cfg80211_change_station,
++	CFG80211_TESTMODE_CMD(mwifiex_tm_cmd)
+ 	.get_channel = mwifiex_cfg80211_get_channel,
+ 	.start_radar_detection = mwifiex_cfg80211_start_radar_detection,
+ 	.channel_switch = mwifiex_cfg80211_channel_switch,
+@@ -4135,9 +4248,12 @@ int mwifiex_register_cfg80211(struct mwi
+ 	wiphy->cipher_suites = mwifiex_cipher_suites;
+ 	wiphy->n_cipher_suites = ARRAY_SIZE(mwifiex_cipher_suites);
+ 
+-	if (adapter->region_code)
+-		wiphy->regulatory_flags |= REGULATORY_DISABLE_BEACON_HINTS |
++	if (adapter->regd) {
++		wiphy->regulatory_flags |= REGULATORY_CUSTOM_REG |
++					   REGULATORY_DISABLE_BEACON_HINTS |
+ 					   REGULATORY_COUNTRY_IE_IGNORE;
++		wiphy_apply_custom_regulatory(wiphy, adapter->regd);
++	}
+ 
+ 	ether_addr_copy(wiphy->perm_addr, adapter->perm_addr);
+ 	wiphy->signal_type = CFG80211_SIGNAL_TYPE_MBM;
+@@ -4173,7 +4289,10 @@ int mwifiex_register_cfg80211(struct mwi
+ 	wiphy->features |= NL80211_FEATURE_HT_IBSS |
+ 			   NL80211_FEATURE_INACTIVITY_TIMER |
+ 			   NL80211_FEATURE_LOW_PRIORITY_SCAN |
+-			   NL80211_FEATURE_NEED_OBSS_SCAN;
++			   NL80211_FEATURE_NEED_OBSS_SCAN |
++			   NL80211_FEATURE_SCAN_RANDOM_MAC_ADDR |
++			   NL80211_FEATURE_SCHED_SCAN_RANDOM_MAC_ADDR |
++			   NL80211_FEATURE_ND_RANDOM_MAC_ADDR;
+ 
+ 	if (ISSUPP_TDLS_ENABLED(adapter->fw_cap_info))
+ 		wiphy->features |= NL80211_FEATURE_TDLS_CHANNEL_SWITCH;
+@@ -4200,19 +4319,27 @@ int mwifiex_register_cfg80211(struct mwi
+ 		return ret;
+ 	}
+ 
+-	if (reg_alpha2 && mwifiex_is_valid_alpha2(reg_alpha2)) {
+-		mwifiex_dbg(adapter, INFO,
+-			    "driver hint alpha2: %2.2s\n", reg_alpha2);
+-		regulatory_hint(wiphy, reg_alpha2);
+-	} else {
+-		if (adapter->region_code == 0x00) {
+-			mwifiex_dbg(adapter, WARN, "Ignore world regulatory domain\n");
++	if (!adapter->regd) {
++		if (reg_alpha2 && mwifiex_is_valid_alpha2(reg_alpha2)) {
++			mwifiex_dbg(adapter, INFO,
++				    "driver hint alpha2: %2.2s\n", reg_alpha2);
++			regulatory_hint(wiphy, reg_alpha2);
+ 		} else {
+-			country_code =
+-				mwifiex_11d_code_2_region(adapter->region_code);
+-			if (country_code &&
+-			    regulatory_hint(wiphy, country_code))
+-				mwifiex_dbg(priv->adapter, ERROR, "regulatory_hint() failed\n");
++			if (adapter->region_code == 0x00) {
++				mwifiex_dbg(adapter, WARN,
++					    "Ignore world regulatory domain\n");
++			} else {
++				wiphy->regulatory_flags |=
++					REGULATORY_DISABLE_BEACON_HINTS |
++					REGULATORY_COUNTRY_IE_IGNORE;
++				country_code =
++					mwifiex_11d_code_2_region(
++						adapter->region_code);
++				if (country_code &&
++				    regulatory_hint(wiphy, country_code))
++					mwifiex_dbg(priv->adapter, ERROR,
++						    "regulatory_hint() failed\n");
++			}
+ 		}
+ 	}
+ 
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/cmdevt.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/cmdevt.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/cmdevt.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/cmdevt.c	2016-10-26 18:17:41.000000000 +0900
+@@ -480,13 +480,27 @@ int mwifiex_free_cmd_buffer(struct mwifi
+  */
+ int mwifiex_process_event(struct mwifiex_adapter *adapter)
+ {
+-	int ret;
++	int ret, i;
+ 	struct mwifiex_private *priv =
+ 		mwifiex_get_priv(adapter, MWIFIEX_BSS_ROLE_ANY);
+ 	struct sk_buff *skb = adapter->event_skb;
+-	u32 eventcause = adapter->event_cause;
++	u32 eventcause;
+ 	struct mwifiex_rxinfo *rx_info;
+ 
++	if ((adapter->event_cause & EVENT_ID_MASK) == EVENT_RADAR_DETECTED) {
++		for (i = 0; i < adapter->priv_num; i++) {
++			priv = adapter->priv[i];
++			if (priv && mwifiex_is_11h_active(priv)) {
++				adapter->event_cause |=
++					((priv->bss_num & 0xff) << 16) |
++					((priv->bss_type & 0xff) << 24);
++				break;
++			}
++		}
++	}
++
++	eventcause = adapter->event_cause;
++
+ 	/* Save the last event to debug log */
+ 	adapter->dbg.last_event_index =
+ 			(adapter->dbg.last_event_index + 1) % DBG_CMD_NUM;
+@@ -581,6 +595,14 @@ int mwifiex_send_cmd(struct mwifiex_priv
+ 			return -1;
+ 		}
+ 	}
++	/* We don't expect commands in manufacturing mode. They are cooked
++	 * in application and ready to download buffer is passed to the driver
++	 */
++	if (adapter->mfg_mode && cmd_no) {
++		dev_dbg(adapter->dev, "Ignoring commands in manufacturing mode\n");
++		return -1;
++	}
++
+ 
+ 	/* Get a new command node */
+ 	cmd_node = mwifiex_get_cmd_node(adapter);
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/debugfs.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/debugfs.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/debugfs.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/debugfs.c	2016-10-26 18:17:41.000000000 +0900
+@@ -118,6 +118,8 @@ mwifiex_info_read(struct file *file, cha
+ 		p += sprintf(p, "bssid=\"%pM\"\n", info.bssid);
+ 		p += sprintf(p, "channel=\"%d\"\n", (int) info.bss_chan);
+ 		p += sprintf(p, "country_code = \"%s\"\n", info.country_code);
++		p += sprintf(p, "region_code=\"0x%x\"\n",
++			     priv->adapter->region_code);
+ 
+ 		netdev_for_each_mc_addr(ha, netdev)
+ 			p += sprintf(p, "multicast_address[%d]=\"%pM\"\n",
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/fw.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/fw.h
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/fw.h	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/fw.h	2016-10-26 18:17:41.000000000 +0900
+@@ -78,6 +78,7 @@ enum KEY_TYPE_ID {
+ 	KEY_TYPE_ID_AES,
+ 	KEY_TYPE_ID_WAPI,
+ 	KEY_TYPE_ID_AES_CMAC,
++	KEY_TYPE_ID_AES_CMAC_DEF,
+ };
+ 
+ #define WPA_PN_SIZE		8
+@@ -176,6 +177,7 @@ enum MWIFIEX_802_11_PRIVACY_FILTER {
+ #define TLV_TYPE_PWK_CIPHER         (PROPRIETARY_TLV_BASE_ID + 145)
+ #define TLV_TYPE_GWK_CIPHER         (PROPRIETARY_TLV_BASE_ID + 146)
+ #define TLV_TYPE_TX_PAUSE           (PROPRIETARY_TLV_BASE_ID + 148)
++#define TLV_TYPE_RXBA_SYNC          (PROPRIETARY_TLV_BASE_ID + 153)
+ #define TLV_TYPE_COALESCE_RULE      (PROPRIETARY_TLV_BASE_ID + 154)
+ #define TLV_TYPE_KEY_PARAM_V2       (PROPRIETARY_TLV_BASE_ID + 156)
+ #define TLV_TYPE_REPEAT_COUNT       (PROPRIETARY_TLV_BASE_ID + 176)
+@@ -188,6 +190,8 @@ enum MWIFIEX_802_11_PRIVACY_FILTER {
+ #define TLV_BTCOEX_WL_AGGR_WINSIZE  (PROPRIETARY_TLV_BASE_ID + 202)
+ #define TLV_BTCOEX_WL_SCANTIME      (PROPRIETARY_TLV_BASE_ID + 203)
+ #define TLV_TYPE_BSS_MODE           (PROPRIETARY_TLV_BASE_ID + 206)
++#define TLV_TYPE_RANDOM_MAC         (PROPRIETARY_TLV_BASE_ID + 236)
++#define TLV_TYPE_CHAN_ATTR_CFG      (PROPRIETARY_TLV_BASE_ID + 237)
+ 
+ #define MWIFIEX_TX_DATA_BUF_SIZE_2K        2048
+ 
+@@ -208,6 +212,7 @@ enum MWIFIEX_802_11_PRIVACY_FILTER {
+ 
+ #define MWIFIEX_TX_DATA_BUF_SIZE_4K        4096
+ #define MWIFIEX_TX_DATA_BUF_SIZE_8K        8192
++#define MWIFIEX_TX_DATA_BUF_SIZE_12K       12288
+ 
+ #define ISSUPP_11NENABLED(FwCapInfo) (FwCapInfo & BIT(11))
+ #define ISSUPP_TDLS_ENABLED(FwCapInfo) (FwCapInfo & BIT(14))
+@@ -379,6 +384,7 @@ enum MWIFIEX_802_11_PRIVACY_FILTER {
+ #define HostCmd_CMD_MC_POLICY                         0x0121
+ #define HostCmd_CMD_TDLS_OPER                         0x0122
+ #define HostCmd_CMD_SDIO_SP_RX_AGGR_CFG               0x0223
++#define HostCmd_CMD_CHAN_REGION_CFG		      0x0242
+ 
+ #define PROTOCOL_NO_SECURITY        0x01
+ #define PROTOCOL_STATIC_WEP         0x02
+@@ -411,6 +417,14 @@ enum P2P_MODES {
+ 	P2P_MODE_CLIENT = 3,
+ };
+ 
++enum mwifiex_channel_flags {
++	MWIFIEX_CHANNEL_PASSIVE = BIT(0),
++	MWIFIEX_CHANNEL_DFS = BIT(1),
++	MWIFIEX_CHANNEL_NOHT40 = BIT(2),
++	MWIFIEX_CHANNEL_NOHT80 = BIT(3),
++	MWIFIEX_CHANNEL_DISABLED = BIT(7),
++};
++
+ #define HostCmd_RET_BIT                       0x8000
+ #define HostCmd_ACT_GEN_GET                   0x0000
+ #define HostCmd_ACT_GEN_SET                   0x0001
+@@ -504,6 +518,8 @@ enum P2P_MODES {
+ #define EVENT_RSSI_HIGH                 0x0000001c
+ #define EVENT_SNR_HIGH                  0x0000001d
+ #define EVENT_IBSS_COALESCED            0x0000001e
++#define EVENT_IBSS_STA_CONNECT          0x00000020
++#define EVENT_IBSS_STA_DISCONNECT       0x00000021
+ #define EVENT_DATA_RSSI_LOW             0x00000024
+ #define EVENT_DATA_SNR_LOW              0x00000025
+ #define EVENT_DATA_RSSI_HIGH            0x00000026
+@@ -531,6 +547,7 @@ enum P2P_MODES {
+ #define EVENT_CHANNEL_REPORT_RDY        0x00000054
+ #define EVENT_TX_DATA_PAUSE             0x00000055
+ #define EVENT_EXT_SCAN_REPORT           0x00000058
++#define EVENT_RXBA_SYNC                 0x00000059
+ #define EVENT_BG_SCAN_STOPPED           0x00000065
+ #define EVENT_REMAIN_ON_CHAN_EXPIRED    0x0000005f
+ #define EVENT_MULTI_CHAN_INFO           0x0000006a
+@@ -734,6 +751,16 @@ struct mwifiex_ie_types_chan_list_param_
+ 	struct mwifiex_chan_scan_param_set chan_scan_param[1];
+ } __packed;
+ 
++struct mwifiex_ie_types_rxba_sync {
++	struct mwifiex_ie_types_header header;
++	u8 mac[ETH_ALEN];
++	u8 tid;
++	u8 reserved;
++	__le16 seq_num;
++	__le16 bitmap_len;
++	u8 bitmap[1];
++} __packed;
++
+ struct chan_band_param_set {
+ 	u8 radio_type;
+ 	u8 chan_number;
+@@ -780,6 +807,11 @@ struct mwifiex_ie_types_scan_chan_gap {
+ 	__le16 chan_gap;
+ } __packed;
+ 
++struct mwifiex_ie_types_random_mac {
++	struct mwifiex_ie_types_header header;
++	u8 mac[ETH_ALEN];
++} __packed;
++
+ struct mwifiex_ietypes_chanstats {
+ 	struct mwifiex_ie_types_header header;
+ 	struct mwifiex_fw_chan_stats chanstats[0];
+@@ -1464,6 +1496,7 @@ struct mwifiex_user_scan_cfg {
+ 	/* Variable number (fixed maximum) of channels to scan up */
+ 	struct mwifiex_user_scan_chan chan_list[MWIFIEX_USER_SCAN_CHAN_MAX];
+ 	u16 scan_chan_gap;
++	u8 random_mac[ETH_ALEN];
+ } __packed;
+ 
+ #define MWIFIEX_BG_SCAN_CHAN_MAX 38
+@@ -1646,7 +1679,7 @@ struct mwifiex_ie_types_sta_info {
+ };
+ 
+ struct host_cmd_ds_sta_list {
+-	u16 sta_count;
++	__le16 sta_count;
+ 	u8 tlv[0];
+ } __packed;
+ 
+@@ -1667,6 +1700,12 @@ struct mwifiex_ie_types_wmm_param_set {
+ 	u8 wmm_ie[1];
+ };
+ 
++struct mwifiex_ie_types_mgmt_frame {
++	struct mwifiex_ie_types_header header;
++	__le16 frame_control;
++	u8 frame_contents[0];
++};
++
+ struct mwifiex_ie_types_wmm_queue_status {
+ 	struct mwifiex_ie_types_header header;
+ 	u8 queue_index;
+@@ -2034,26 +2073,26 @@ struct host_cmd_ds_set_bss_mode {
+ 
+ struct host_cmd_ds_pcie_details {
+ 	/* TX buffer descriptor ring address */
+-	u32 txbd_addr_lo;
+-	u32 txbd_addr_hi;
++	__le32 txbd_addr_lo;
++	__le32 txbd_addr_hi;
+ 	/* TX buffer descriptor ring count */
+-	u32 txbd_count;
++	__le32 txbd_count;
+ 
+ 	/* RX buffer descriptor ring address */
+-	u32 rxbd_addr_lo;
+-	u32 rxbd_addr_hi;
++	__le32 rxbd_addr_lo;
++	__le32 rxbd_addr_hi;
+ 	/* RX buffer descriptor ring count */
+-	u32 rxbd_count;
++	__le32 rxbd_count;
+ 
+ 	/* Event buffer descriptor ring address */
+-	u32 evtbd_addr_lo;
+-	u32 evtbd_addr_hi;
++	__le32 evtbd_addr_lo;
++	__le32 evtbd_addr_hi;
+ 	/* Event buffer descriptor ring count */
+-	u32 evtbd_count;
++	__le32 evtbd_count;
+ 
+ 	/* Sleep cookie buffer physical address */
+-	u32 sleep_cookie_addr_lo;
+-	u32 sleep_cookie_addr_hi;
++	__le32 sleep_cookie_addr_lo;
++	__le32 sleep_cookie_addr_hi;
+ } __packed;
+ 
+ struct mwifiex_ie_types_rssi_threshold {
+@@ -2093,8 +2132,8 @@ struct mwifiex_ie_types_mc_group_info {
+ 	u8 chan_buf_weight;
+ 	u8 band_config;
+ 	u8 chan_num;
+-	u32 chan_time;
+-	u32 reserved;
++	__le32 chan_time;
++	__le32 reserved;
+ 	union {
+ 		u8 sdio_func_num;
+ 		u8 usb_ep_num;
+@@ -2185,7 +2224,7 @@ struct host_cmd_ds_robust_coex {
+ } __packed;
+ 
+ struct host_cmd_ds_wakeup_reason {
+-	u16  wakeup_reason;
++	__le16  wakeup_reason;
+ } __packed;
+ 
+ struct host_cmd_ds_gtk_rekey_params {
+@@ -2196,6 +2235,10 @@ struct host_cmd_ds_gtk_rekey_params {
+ 	__le32 replay_ctr_high;
+ } __packed;
+ 
++struct host_cmd_ds_chan_region_cfg {
++	__le16 action;
++} __packed;
++
+ struct host_cmd_ds_command {
+ 	__le16 command;
+ 	__le16 size;
+@@ -2270,6 +2313,7 @@ struct host_cmd_ds_command {
+ 		struct host_cmd_ds_robust_coex coex;
+ 		struct host_cmd_ds_wakeup_reason hs_wakeup_reason;
+ 		struct host_cmd_ds_gtk_rekey_params rekey;
++		struct host_cmd_ds_chan_region_cfg reg_cfg;
+ 	} params;
+ } __packed;
+ 
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/init.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/init.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/init.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/init.c	2016-10-26 18:17:41.000000000 +0900
+@@ -298,6 +298,7 @@ static void mwifiex_init_adapter(struct 
+ 	memset(&adapter->arp_filter, 0, sizeof(adapter->arp_filter));
+ 	adapter->arp_filter_size = 0;
+ 	adapter->max_mgmt_ie_index = MAX_MGMT_IE_INDEX;
++	adapter->mfg_mode = mfg_mode;
+ 	adapter->key_api_major_ver = 0;
+ 	adapter->key_api_minor_ver = 0;
+ 	eth_broadcast_addr(adapter->perm_addr);
+@@ -553,15 +554,22 @@ int mwifiex_init_fw(struct mwifiex_adapt
+ 				return -1;
+ 		}
+ 	}
++	if (adapter->mfg_mode) {
++		adapter->hw_status = MWIFIEX_HW_STATUS_READY;
++		ret = -EINPROGRESS;
++	} else {
++		for (i = 0; i < adapter->priv_num; i++) {
++			if (adapter->priv[i]) {
++				ret = mwifiex_sta_init_cmd(adapter->priv[i],
++							   first_sta, true);
++				if (ret == -1)
++					return -1;
++
++				first_sta = false;
++			}
++
+ 
+-	for (i = 0; i < adapter->priv_num; i++) {
+-		if (adapter->priv[i]) {
+-			ret = mwifiex_sta_init_cmd(adapter->priv[i], first_sta,
+-						   true);
+-			if (ret == -1)
+-				return -1;
+ 
+-			first_sta = false;
+ 		}
+ 	}
+ 
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/ioctl.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/ioctl.h
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/ioctl.h	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/ioctl.h	2016-10-26 18:17:41.000000000 +0900
+@@ -260,6 +260,7 @@ struct mwifiex_ds_encrypt_key {
+ 	u8 is_igtk_key;
+ 	u8 is_current_wep_key;
+ 	u8 is_rx_seq_valid;
++	u8 is_igtk_def_key;
+ };
+ 
+ struct mwifiex_power_cfg {
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/join.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/join.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/join.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/join.c	2016-10-26 18:17:41.000000000 +0900
+@@ -669,9 +669,8 @@ int mwifiex_ret_802_11_associate(struct 
+ 	priv->assoc_rsp_size = min(le16_to_cpu(resp->size) - S_DS_GEN,
+ 				   sizeof(priv->assoc_rsp_buf));
+ 
+-	memcpy(priv->assoc_rsp_buf, &resp->params, priv->assoc_rsp_size);
+-
+ 	assoc_rsp->a_id = cpu_to_le16(aid);
++	memcpy(priv->assoc_rsp_buf, &resp->params, priv->assoc_rsp_size);
+ 
+ 	if (status_code) {
+ 		priv->adapter->dbg.num_cmd_assoc_failure++;
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/main.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/main.c	2016-10-26 18:17:41.000000000 +0900
+@@ -23,6 +23,7 @@
+ #include "11n.h"
+ 
+ #define VERSION	"1.0"
++#define MFG_FIRMWARE	"mwifiex_mfg.bin"
+ 
+ static unsigned int debug_mask = MWIFIEX_DEFAULT_DEBUG_MASK;
+ module_param(debug_mask, uint, 0);
+@@ -37,6 +38,10 @@ module_param(driver_mode, ushort, 0);
+ MODULE_PARM_DESC(driver_mode,
+ 		 "station=0x1(default), ap-sta=0x3, station-p2p=0x5, ap-sta-p2p=0x7");
+ 
++bool mfg_mode;
++module_param(mfg_mode, bool, 0);
++MODULE_PARM_DESC(mfg_mode, "manufacturing mode enable:1, disable:0");
++
+ /*
+  * This function registers the device and performs all the necessary
+  * initializations.
+@@ -139,6 +144,8 @@ static int mwifiex_unregister(struct mwi
+ 		adapter->nd_info = NULL;
+ 	}
+ 
++	kfree(adapter->regd);
++
+ 	vfree(adapter->chan_stats);
+ 	kfree(adapter);
+ 	return 0;
+@@ -486,9 +493,11 @@ static void mwifiex_free_adapter(struct 
+  */
+ static void mwifiex_terminate_workqueue(struct mwifiex_adapter *adapter)
+ {
+-	flush_workqueue(adapter->workqueue);
+-	destroy_workqueue(adapter->workqueue);
+-	adapter->workqueue = NULL;
++	if (adapter->workqueue) {
++		flush_workqueue(adapter->workqueue);
++		destroy_workqueue(adapter->workqueue);
++		adapter->workqueue = NULL;
++	}
+ 
+ 	if (adapter->rx_workqueue) {
+ 		flush_workqueue(adapter->rx_workqueue);
+@@ -559,16 +568,21 @@ static void mwifiex_fw_dpc(const struct 
+ 		goto done;
+ 	}
+ 	/* Wait for mwifiex_init to complete */
+-	wait_event_interruptible(adapter->init_wait_q,
+-				 adapter->init_wait_q_woken);
+-	if (adapter->hw_status != MWIFIEX_HW_STATUS_READY)
+-		goto err_init_fw;
++	if (!adapter->mfg_mode) {
++		wait_event_interruptible(adapter->init_wait_q,
++					 adapter->init_wait_q_woken);
++		if (adapter->hw_status != MWIFIEX_HW_STATUS_READY)
++			goto err_init_fw;
++	}
+ 
+ 	priv = adapter->priv[MWIFIEX_BSS_ROLE_STA];
+-	if (mwifiex_register_cfg80211(adapter)) {
+-		mwifiex_dbg(adapter, ERROR,
+-			    "cannot register with cfg80211\n");
+-		goto err_init_fw;
++
++	if (!adapter->wiphy) {
++		if (mwifiex_register_cfg80211(adapter)) {
++			mwifiex_dbg(adapter, ERROR,
++				    "cannot register with cfg80211\n");
++			goto err_init_fw;
++		}
+ 	}
+ 
+ 	if (mwifiex_init_channel_scan_gap(adapter)) {
+@@ -662,16 +676,41 @@ done:
+ /*
+  * This function initializes the hardware and gets firmware.
+  */
+-static int mwifiex_init_hw_fw(struct mwifiex_adapter *adapter)
++static int mwifiex_init_hw_fw(struct mwifiex_adapter *adapter,
++			      bool req_fw_nowait)
+ {
+ 	int ret;
+ 
+-	ret = request_firmware_nowait(THIS_MODULE, 1, adapter->fw_name,
+-				      adapter->dev, GFP_KERNEL, adapter,
+-				      mwifiex_fw_dpc);
+-	if (ret < 0)
+-		mwifiex_dbg(adapter, ERROR,
+-			    "request_firmware_nowait error %d\n", ret);
++	/* Override default firmware with manufacturing one if
++	 * manufacturing mode is enabled
++	 */
++	if (mfg_mode) {
++		if (strlcpy(adapter->fw_name, MFG_FIRMWARE,
++			    sizeof(adapter->fw_name)) >=
++			    sizeof(adapter->fw_name)) {
++			pr_err("%s: fw_name too long!\n", __func__);
++			return -1;
++		}
++	}
++
++	if (req_fw_nowait) {
++		ret = request_firmware_nowait(THIS_MODULE, 1, adapter->fw_name,
++					      adapter->dev, GFP_KERNEL, adapter,
++					      mwifiex_fw_dpc);
++		if (ret < 0)
++			mwifiex_dbg(adapter, ERROR,
++				    "request_firmware_nowait error %d\n", ret);
++	} else {
++		ret = request_firmware(&adapter->firmware,
++				       adapter->fw_name,
++				       adapter->dev);
++		if (ret < 0)
++			mwifiex_dbg(adapter, ERROR,
++				    "request_firmware error %d\n", ret);
++		else
++			mwifiex_fw_dpc(adapter->firmware, (void *)adapter);
++	}
++
+ 	return ret;
+ }
+ 
+@@ -1321,6 +1360,199 @@ static void mwifiex_main_work_queue(stru
+ }
+ 
+ /*
++ * This function gets called during PCIe function level reset. Required
++ * code is extracted from mwifiex_remove_card()
++ */
++static int
++mwifiex_shutdown_sw(struct mwifiex_adapter *adapter, struct semaphore *sem)
++{
++	struct mwifiex_private *priv;
++	int i;
++
++	if (!adapter)
++		goto exit_return;
++
++	if (down_interruptible(sem))
++		goto exit_sem_err;
++
++	priv = mwifiex_get_priv(adapter, MWIFIEX_BSS_ROLE_ANY);
++	mwifiex_deauthenticate(priv, NULL);
++
++	/* We can no longer handle interrupts once we start doing the teardown
++	 * below.
++	 */
++	if (adapter->if_ops.disable_int)
++		adapter->if_ops.disable_int(adapter);
++
++	adapter->surprise_removed = true;
++	mwifiex_terminate_workqueue(adapter);
++
++	/* Stop data */
++	for (i = 0; i < adapter->priv_num; i++) {
++		priv = adapter->priv[i];
++		if (priv && priv->netdev) {
++			mwifiex_stop_net_dev_queue(priv->netdev, adapter);
++			if (netif_carrier_ok(priv->netdev))
++				netif_carrier_off(priv->netdev);
++			netif_device_detach(priv->netdev);
++		}
++	}
++
++	mwifiex_dbg(adapter, CMD, "cmd: calling mwifiex_shutdown_drv...\n");
++	adapter->init_wait_q_woken = false;
++
++	if (mwifiex_shutdown_drv(adapter) == -EINPROGRESS)
++		wait_event_interruptible(adapter->init_wait_q,
++					 adapter->init_wait_q_woken);
++	if (adapter->if_ops.down_dev)
++		adapter->if_ops.down_dev(adapter);
++
++	mwifiex_dbg(adapter, CMD, "cmd: mwifiex_shutdown_drv done\n");
++	if (atomic_read(&adapter->rx_pending) ||
++	    atomic_read(&adapter->tx_pending) ||
++	    atomic_read(&adapter->cmd_pending)) {
++		mwifiex_dbg(adapter, ERROR,
++			    "rx_pending=%d, tx_pending=%d,\t"
++			    "cmd_pending=%d\n",
++			    atomic_read(&adapter->rx_pending),
++			    atomic_read(&adapter->tx_pending),
++			    atomic_read(&adapter->cmd_pending));
++	}
++
++	for (i = 0; i < adapter->priv_num; i++) {
++		priv = adapter->priv[i];
++		if (!priv)
++			continue;
++		rtnl_lock();
++		if (priv->netdev &&
++		    priv->wdev.iftype != NL80211_IFTYPE_UNSPECIFIED)
++			mwifiex_del_virtual_intf(adapter->wiphy, &priv->wdev);
++		rtnl_unlock();
++	}
++
++	up(sem);
++exit_sem_err:
++	mwifiex_dbg(adapter, INFO, "%s, successful\n", __func__);
++exit_return:
++	return 0;
++}
++
++/* This function gets called during PCIe function level reset. Required
++ * code is extracted from mwifiex_add_card()
++ */
++static int
++mwifiex_reinit_sw(struct mwifiex_adapter *adapter, struct semaphore *sem,
++		  struct mwifiex_if_ops *if_ops, u8 iface_type)
++{
++	char fw_name[32];
++	struct pcie_service_card *card = adapter->card;
++
++	if (down_interruptible(sem))
++		goto exit_sem_err;
++
++	mwifiex_init_lock_list(adapter);
++	if (adapter->if_ops.up_dev)
++		adapter->if_ops.up_dev(adapter);
++
++	adapter->iface_type = iface_type;
++	adapter->card_sem = sem;
++
++	adapter->hw_status = MWIFIEX_HW_STATUS_INITIALIZING;
++	adapter->surprise_removed = false;
++	init_waitqueue_head(&adapter->init_wait_q);
++	adapter->is_suspended = false;
++	adapter->hs_activated = false;
++	init_waitqueue_head(&adapter->hs_activate_wait_q);
++	init_waitqueue_head(&adapter->cmd_wait_q.wait);
++	adapter->cmd_wait_q.status = 0;
++	adapter->scan_wait_q_woken = false;
++
++	if ((num_possible_cpus() > 1) || adapter->iface_type == MWIFIEX_USB)
++		adapter->rx_work_enabled = true;
++
++	adapter->workqueue =
++		alloc_workqueue("MWIFIEX_WORK_QUEUE",
++				WQ_HIGHPRI | WQ_MEM_RECLAIM | WQ_UNBOUND, 1);
++	if (!adapter->workqueue)
++		goto err_kmalloc;
++
++	INIT_WORK(&adapter->main_work, mwifiex_main_work_queue);
++
++	if (adapter->rx_work_enabled) {
++		adapter->rx_workqueue = alloc_workqueue("MWIFIEX_RX_WORK_QUEUE",
++							WQ_HIGHPRI |
++							WQ_MEM_RECLAIM |
++							WQ_UNBOUND, 1);
++		if (!adapter->rx_workqueue)
++			goto err_kmalloc;
++		INIT_WORK(&adapter->rx_work, mwifiex_rx_work_queue);
++	}
++
++	/* Register the device. Fill up the private data structure with
++	 * relevant information from the card. Some code extracted from
++	 * mwifiex_register_dev()
++	 */
++	mwifiex_dbg(adapter, INFO, "%s, mwifiex_init_hw_fw()...\n", __func__);
++	strcpy(fw_name, adapter->fw_name);
++	strcpy(adapter->fw_name, PCIE8997_DEFAULT_WIFIFW_NAME);
++
++	adapter->tx_buf_size = card->pcie.tx_buf_size;
++	adapter->ext_scan = card->pcie.can_ext_scan;
++	if (mwifiex_init_hw_fw(adapter, false)) {
++		strcpy(adapter->fw_name, fw_name);
++		mwifiex_dbg(adapter, ERROR,
++			    "%s: firmware init failed\n", __func__);
++		goto err_init_fw;
++	}
++	strcpy(adapter->fw_name, fw_name);
++	mwifiex_dbg(adapter, INFO, "%s, successful\n", __func__);
++	up(sem);
++	return 0;
++
++err_init_fw:
++	mwifiex_dbg(adapter, ERROR, "info: %s: unregister device\n", __func__);
++	if (adapter->if_ops.unregister_dev)
++		adapter->if_ops.unregister_dev(adapter);
++	if (adapter->hw_status == MWIFIEX_HW_STATUS_READY) {
++		mwifiex_dbg(adapter, ERROR,
++			    "info: %s: shutdown mwifiex\n", __func__);
++		adapter->init_wait_q_woken = false;
++
++		if (mwifiex_shutdown_drv(adapter) == -EINPROGRESS)
++			wait_event_interruptible(adapter->init_wait_q,
++						 adapter->init_wait_q_woken);
++	}
++
++err_kmalloc:
++	mwifiex_terminate_workqueue(adapter);
++	adapter->surprise_removed = true;
++	up(sem);
++exit_sem_err:
++	mwifiex_dbg(adapter, INFO, "%s, error\n", __func__);
++
++	return -1;
++}
++
++/* This function processes pre and post PCIe function level resets.
++ * It performs software cleanup without touching PCIe specific code.
++ * Also, during initialization PCIe stuff is skipped.
++ */
++void mwifiex_do_flr(struct mwifiex_adapter *adapter, bool prepare)
++{
++	struct mwifiex_if_ops if_ops;
++
++	if (!prepare) {
++		mwifiex_reinit_sw(adapter, adapter->card_sem, &if_ops,
++				  adapter->iface_type);
++	} else {
++		memcpy(&if_ops, &adapter->if_ops,
++		       sizeof(struct mwifiex_if_ops));
++		mwifiex_shutdown_sw(adapter, adapter->card_sem);
++	}
++}
++EXPORT_SYMBOL_GPL(mwifiex_do_flr);
++
++/*
+  * This function adds the card.
+  *
+  * This function follows the following major steps to set up the device -
+@@ -1391,7 +1623,7 @@ mwifiex_add_card(void *card, struct sema
+ 		goto err_registerdev;
+ 	}
+ 
+-	if (mwifiex_init_hw_fw(adapter)) {
++	if (mwifiex_init_hw_fw(adapter, true)) {
+ 		pr_err("%s: firmware init failed\n", __func__);
+ 		goto err_init_fw;
+ 	}
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/main.h
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.h	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/main.h	2016-10-26 18:17:41.000000000 +0900
+@@ -58,6 +58,7 @@
+ #include "sdio.h"
+ 
+ extern const char driver_version[];
++extern bool mfg_mode;
+ 
+ struct mwifiex_adapter;
+ struct mwifiex_private;
+@@ -675,6 +676,7 @@ struct mwifiex_private {
+ 	struct mwifiex_user_scan_chan hidden_chan[MWIFIEX_USER_SCAN_CHAN_MAX];
+ 	u8 assoc_resp_ht_param;
+ 	bool ht_param_present;
++	u8 random_mac[ETH_ALEN];
+ };
+ 
+ 
+@@ -827,6 +829,8 @@ struct mwifiex_if_ops {
+ 	void (*deaggr_pkt)(struct mwifiex_adapter *, struct sk_buff *);
+ 	void (*multi_port_resync)(struct mwifiex_adapter *);
+ 	bool (*is_port_ready)(struct mwifiex_private *);
++	void (*down_dev)(struct mwifiex_adapter *);
++	void (*up_dev)(struct mwifiex_adapter *);
+ };
+ 
+ struct mwifiex_adapter {
+@@ -989,6 +993,7 @@ struct mwifiex_adapter {
+ 	u32 drv_info_size;
+ 	bool scan_chan_gap_enabled;
+ 	struct sk_buff_head rx_data_q;
++	bool mfg_mode;
+ 	struct mwifiex_chan_stats *chan_stats;
+ 	u32 num_in_chan_stats;
+ 	int survey_idx;
+@@ -1004,6 +1009,7 @@ struct mwifiex_adapter {
+ 	bool usb_mc_status;
+ 	bool usb_mc_setup;
+ 	struct cfg80211_wowlan_nd_info *nd_info;
++	struct ieee80211_regdomain *regd;
+ };
+ 
+ void mwifiex_process_tx_queue(struct mwifiex_adapter *adapter);
+@@ -1625,4 +1631,5 @@ void mwifiex_debugfs_remove(void);
+ void mwifiex_dev_debugfs_init(struct mwifiex_private *priv);
+ void mwifiex_dev_debugfs_remove(struct mwifiex_private *priv);
+ #endif
++void mwifiex_do_flr(struct mwifiex_adapter *adapter, bool prepare);
+ #endif /* !_MWIFIEX_MAIN_H_ */
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/pcie.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/pcie.c	2016-10-26 18:17:41.000000000 +0900
+@@ -225,7 +225,7 @@ static void mwifiex_pcie_remove(struct p
+ 	if (!adapter || !adapter->priv_num)
+ 		return;
+ 
+-	if (user_rmmod) {
++	if (user_rmmod && !adapter->mfg_mode) {
+ #ifdef CONFIG_PM_SLEEP
+ 		if (adapter->is_suspended)
+ 			mwifiex_pcie_resume(&pdev->dev);
+@@ -277,6 +277,52 @@ static const struct pci_device_id mwifie
+ 
+ MODULE_DEVICE_TABLE(pci, mwifiex_ids);
+ 
++static void mwifiex_pcie_reset_notify(struct pci_dev *pdev, bool prepare)
++{
++	struct mwifiex_adapter *adapter;
++	struct pcie_service_card *card;
++
++	if (!pdev) {
++		pr_err("%s: PCIe device is not specified\n", __func__);
++		return;
++	}
++
++	card = (struct pcie_service_card *)pci_get_drvdata(pdev);
++	if (!card || !card->adapter) {
++		pr_err("%s: Card or adapter structure is not valid (%ld)\n",
++		       __func__, (long)card);
++		return;
++	}
++
++	adapter = card->adapter;
++	mwifiex_dbg(adapter, INFO,
++		    "%s: vendor=0x%4.04x device=0x%4.04x rev=%d %s\n",
++		    __func__, pdev->vendor, pdev->device,
++		    pdev->revision,
++		    prepare ? "Pre-FLR" : "Post-FLR");
++
++	if (prepare) {
++		/* Kernel would be performing FLR after this notification.
++		 * Cleanup all software without cleaning anything related to
++		 * PCIe and HW.
++		 */
++		mwifiex_do_flr(adapter, prepare);
++		adapter->surprise_removed = true;
++	} else {
++		/* Kernel stores and restores PCIe function context before and
++		 * after performing FLR respectively. Reconfigure the software
++		 * and firmware including firmware redownload
++		 */
++		adapter->surprise_removed = false;
++		mwifiex_do_flr(adapter, prepare);
++	}
++	mwifiex_dbg(adapter, INFO, "%s, successful\n", __func__);
++}
++
++static const struct pci_error_handlers mwifiex_pcie_err_handler[] = {
++		{ .reset_notify = mwifiex_pcie_reset_notify, },
++};
++
+ #ifdef CONFIG_PM_SLEEP
+ /* Power Management Hooks */
+ static SIMPLE_DEV_PM_OPS(mwifiex_pcie_pm_ops, mwifiex_pcie_suspend,
+@@ -295,6 +341,7 @@ static struct pci_driver __refdata mwifi
+ 	},
+ #endif
+ 	.shutdown = mwifiex_pcie_shutdown,
++	.err_handler = mwifiex_pcie_err_handler,
+ };
+ 
+ /*
+@@ -1956,8 +2003,6 @@ static int mwifiex_prog_fw_w_helper(stru
+ 			if (firmware_len - offset < txlen)
+ 				txlen = firmware_len - offset;
+ 
+-			mwifiex_dbg(adapter, INFO, ".");
+-
+ 			tx_blocks = (txlen + card->pcie.blksz_fw_dl - 1) /
+ 				    card->pcie.blksz_fw_dl;
+ 
+@@ -2043,6 +2088,10 @@ mwifiex_check_fw_status(struct mwifiex_a
+ 			ret = -1;
+ 		else
+ 			ret = 0;
++
++		mwifiex_dbg(adapter, INFO, "Try %d if FW is ready <%d,%#x>",
++			    tries, ret, firmware_stat);
++
+ 		if (ret)
+ 			continue;
+ 		if (firmware_stat == FIRMWARE_READY_PCIE) {
+@@ -2074,8 +2123,7 @@ mwifiex_check_winner_status(struct mwifi
+ 		adapter->winner = 1;
+ 	} else {
+ 		mwifiex_dbg(adapter, ERROR,
+-			    "PCI-E is not the winner <%#x,%d>, exit dnld\n",
+-			    ret, adapter->winner);
++			    "PCI-E is not the winner <%#x>", winner);
+ 	}
+ 
+ 	return ret;
+@@ -2863,7 +2911,7 @@ static int mwifiex_pcie_request_irq(stru
+ static void mwifiex_pcie_get_fw_name(struct mwifiex_adapter *adapter)
+ {
+ 	int revision_id = 0;
+-	int version;
++	int version, magic;
+ 	struct pcie_service_card *card = adapter->card;
+ 
+ 	switch (card->dev->device) {
+@@ -2888,30 +2936,19 @@ static void mwifiex_pcie_get_fw_name(str
+ 		}
+ 		break;
+ 	case PCIE_DEVICE_ID_MARVELL_88W8997:
+-		mwifiex_read_reg(adapter, 0x0c48, &revision_id);
++		mwifiex_read_reg(adapter, 0x8, &revision_id);
+ 		mwifiex_read_reg(adapter, 0x0cd0, &version);
++		mwifiex_read_reg(adapter, 0x0cd4, &magic);
++		revision_id &= 0xff;
+ 		version &= 0x7;
+-		switch (revision_id) {
+-		case PCIE8997_V2:
+-			if (version == CHIP_VER_PCIEUART)
+-				strcpy(adapter->fw_name,
+-				       PCIEUART8997_FW_NAME_V2);
+-			else
+-				strcpy(adapter->fw_name,
+-				       PCIEUSB8997_FW_NAME_V2);
+-			break;
+-		case PCIE8997_Z:
+-			if (version == CHIP_VER_PCIEUART)
+-				strcpy(adapter->fw_name,
+-				       PCIEUART8997_FW_NAME_Z);
+-			else
+-				strcpy(adapter->fw_name,
+-				       PCIEUSB8997_FW_NAME_Z);
+-			break;
+-		default:
+-			strcpy(adapter->fw_name, PCIE8997_DEFAULT_FW_NAME);
+-			break;
+-		}
++		magic &= 0xff;
++		if (revision_id == PCIE8997_A1 &&
++		    magic == CHIP_MAGIC_VALUE &&
++		    version == CHIP_VER_PCIEUART)
++			strcpy(adapter->fw_name, PCIEUART8997_FW_NAME_V4);
++		else
++			strcpy(adapter->fw_name, PCIEUSB8997_FW_NAME_V4);
++		break;
+ 	default:
+ 		break;
+ 	}
+@@ -2952,7 +2989,6 @@ static int mwifiex_register_dev(struct m
+ static void mwifiex_unregister_dev(struct mwifiex_adapter *adapter)
+ {
+ 	struct pcie_service_card *card = adapter->card;
+-	const struct mwifiex_pcie_card_reg *reg;
+ 	struct pci_dev *pdev;
+ 	int i;
+ 
+@@ -2976,8 +3012,90 @@ static void mwifiex_unregister_dev(struc
+ 			if (card->msi_enable)
+ 				pci_disable_msi(pdev);
+ 	       }
++	}
++}
++
++/* This function initializes the PCI-E host memory space, WCB rings, etc.
++ *
++ * The following initializations steps are followed -
++ *      - Allocate TXBD ring buffers
++ *      - Allocate RXBD ring buffers
++ *      - Allocate event BD ring buffers
++ *      - Allocate command response ring buffer
++ *      - Allocate sleep cookie buffer
++ * Part of mwifiex_pcie_init(), not reset the PCIE registers
++ */
++static void mwifiex_pcie_up_dev(struct mwifiex_adapter *adapter)
++{
++	struct pcie_service_card *card = adapter->card;
++	int ret;
++	struct pci_dev *pdev = card->dev;
++	const struct mwifiex_pcie_card_reg *reg = card->pcie.reg;
+ 
+-		reg = card->pcie.reg;
++	card->cmdrsp_buf = NULL;
++	ret = mwifiex_pcie_create_txbd_ring(adapter);
++	if (ret) {
++		mwifiex_dbg(adapter, ERROR, "Failed to create txbd ring\n");
++		goto err_cre_txbd;
++	}
++
++	ret = mwifiex_pcie_create_rxbd_ring(adapter);
++	if (ret) {
++		mwifiex_dbg(adapter, ERROR, "Failed to create rxbd ring\n");
++		goto err_cre_rxbd;
++	}
++
++	ret = mwifiex_pcie_create_evtbd_ring(adapter);
++	if (ret) {
++		mwifiex_dbg(adapter, ERROR, "Failed to create evtbd ring\n");
++		goto err_cre_evtbd;
++	}
++
++	ret = mwifiex_pcie_alloc_cmdrsp_buf(adapter);
++	if (ret) {
++		mwifiex_dbg(adapter, ERROR, "Failed to allocate cmdbuf buffer\n");
++		goto err_alloc_cmdbuf;
++	}
++
++	if (reg->sleep_cookie) {
++		ret = mwifiex_pcie_alloc_sleep_cookie_buf(adapter);
++		if (ret) {
++			mwifiex_dbg(adapter, ERROR, "Failed to allocate sleep_cookie buffer\n");
++			goto err_alloc_cookie;
++		}
++	} else {
++		card->sleep_cookie_vbase = NULL;
++	}
++	return;
++
++err_alloc_cookie:
++	mwifiex_pcie_delete_cmdrsp_buf(adapter);
++err_alloc_cmdbuf:
++	mwifiex_pcie_delete_evtbd_ring(adapter);
++err_cre_evtbd:
++	mwifiex_pcie_delete_rxbd_ring(adapter);
++err_cre_rxbd:
++	mwifiex_pcie_delete_txbd_ring(adapter);
++err_cre_txbd:
++	pci_iounmap(pdev, card->pci_mmap1);
++}
++
++/* This function cleans up the PCI-E host memory space.
++ * Some code is extracted from mwifiex_unregister_dev()
++ *
++ */
++static void mwifiex_pcie_down_dev(struct mwifiex_adapter *adapter)
++{
++	struct pcie_service_card *card = adapter->card;
++	const struct mwifiex_pcie_card_reg *reg = card->pcie.reg;
++
++	if (mwifiex_write_reg(adapter, reg->drv_rdy, 0x00000000))
++		mwifiex_dbg(adapter, ERROR, "Failed to write driver not-ready signature\n");
++
++	adapter->seq_num = 0;
++	adapter->tx_buf_size = MWIFIEX_TX_DATA_BUF_SIZE_4K;
++
++	if (card) {
+ 		if (reg->sleep_cookie)
+ 			mwifiex_pcie_delete_sleep_cookie_buf(adapter);
+ 
+@@ -2987,6 +3105,8 @@ static void mwifiex_unregister_dev(struc
+ 		mwifiex_pcie_delete_txbd_ring(adapter);
+ 		card->cmdrsp_buf = NULL;
+ 	}
++
++	return;
+ }
+ 
+ static struct mwifiex_if_ops pcie_ops = {
+@@ -3013,6 +3133,8 @@ static struct mwifiex_if_ops pcie_ops = 
+ 	.clean_pcie_ring =		mwifiex_clean_pcie_ring_buf,
+ 	.reg_dump =			mwifiex_pcie_reg_dump,
+ 	.device_dump =			mwifiex_pcie_device_dump,
++	.down_dev =			mwifiex_pcie_down_dev,
++	.up_dev =			mwifiex_pcie_up_dev,
+ };
+ 
+ /*
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/pcie.h
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.h	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/pcie.h	2016-10-26 18:17:41.000000000 +0900
+@@ -32,11 +32,9 @@
+ #define PCIE8897_DEFAULT_FW_NAME "mrvl/pcie8897_uapsta.bin"
+ #define PCIE8897_A0_FW_NAME "mrvl/pcie8897_uapsta_a0.bin"
+ #define PCIE8897_B0_FW_NAME "mrvl/pcie8897_uapsta.bin"
+-#define PCIE8997_DEFAULT_FW_NAME "mrvl/pcieusb8997_combo_v2.bin"
+-#define PCIEUART8997_FW_NAME_Z "mrvl/pcieuart8997_combo.bin"
+-#define PCIEUART8997_FW_NAME_V2 "mrvl/pcieuart8997_combo_v2.bin"
+-#define PCIEUSB8997_FW_NAME_Z "mrvl/pcieusb8997_combo.bin"
+-#define PCIEUSB8997_FW_NAME_V2 "mrvl/pcieusb8997_combo_v2.bin"
++#define PCIEUART8997_FW_NAME_V4 "mrvl/pcieuart8997_combo_v4.bin"
++#define PCIEUSB8997_FW_NAME_V4 "mrvl/pcieusb8997_combo_v4.bin"
++#define PCIE8997_DEFAULT_WIFIFW_NAME "mrvl/pcie8997_wlan_v4.bin"
+ 
+ #define PCIE_VENDOR_ID_MARVELL              (0x11ab)
+ #define PCIE_VENDOR_ID_V2_MARVELL           (0x1b4b)
+@@ -46,9 +44,10 @@
+ 
+ #define PCIE8897_A0	0x1100
+ #define PCIE8897_B0	0x1200
+-#define PCIE8997_Z	0x0
+-#define PCIE8997_V2	0x471
++#define PCIE8997_A0	0x10
++#define PCIE8997_A1	0x11
+ #define CHIP_VER_PCIEUART	0x3
++#define CHIP_MAGIC_VALUE	0x24
+ 
+ /* Constants for Buffer Descriptor (BD) rings */
+ #define MWIFIEX_MAX_TXRX_BD			0x20
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/scan.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/scan.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/scan.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/scan.c	2016-10-26 18:17:41.000000000 +0900
+@@ -820,6 +820,7 @@ mwifiex_config_scan(struct mwifiex_priva
+ 	struct mwifiex_adapter *adapter = priv->adapter;
+ 	struct mwifiex_ie_types_num_probes *num_probes_tlv;
+ 	struct mwifiex_ie_types_scan_chan_gap *chan_gap_tlv;
++	struct mwifiex_ie_types_random_mac *random_mac_tlv;
+ 	struct mwifiex_ie_types_wildcard_ssid_params *wildcard_ssid_tlv;
+ 	struct mwifiex_ie_types_bssid_list *bssid_tlv;
+ 	u8 *tlv_pos;
+@@ -835,6 +836,7 @@ mwifiex_config_scan(struct mwifiex_priva
+ 	u8 ssid_filter;
+ 	struct mwifiex_ie_types_htcap *ht_cap;
+ 	struct mwifiex_ie_types_bss_mode *bss_mode;
++	const u8 zero_mac[6] = {0, 0, 0, 0, 0, 0};
+ 
+ 	/* The tlv_buf_len is calculated for each scan command.  The TLVs added
+ 	   in this routine will be preserved since the routine that sends the
+@@ -967,6 +969,18 @@ mwifiex_config_scan(struct mwifiex_priva
+ 			tlv_pos +=
+ 				  sizeof(struct mwifiex_ie_types_scan_chan_gap);
+ 		}
++
++		if (!ether_addr_equal(user_scan_in->random_mac, zero_mac)) {
++			random_mac_tlv = (void *)tlv_pos;
++			random_mac_tlv->header.type =
++					 cpu_to_le16(TLV_TYPE_RANDOM_MAC);
++			random_mac_tlv->header.len =
++				    cpu_to_le16(sizeof(random_mac_tlv->mac));
++			ether_addr_copy(random_mac_tlv->mac,
++					user_scan_in->random_mac);
++			tlv_pos +=
++				  sizeof(struct mwifiex_ie_types_random_mac);
++		}
+ 	} else {
+ 		scan_cfg_out->bss_mode = (u8) adapter->scan_mode;
+ 		num_probes = adapter->scan_probes;
+@@ -1922,6 +1936,7 @@ mwifiex_active_scan_req_for_passive_chan
+ 	}
+ 
+ 	adapter->active_scan_triggered = true;
++	ether_addr_copy(user_scan_cfg->random_mac, priv->random_mac);
+ 	user_scan_cfg->num_ssids = priv->scan_request->n_ssids;
+ 	user_scan_cfg->ssid_list = priv->scan_request->ssids;
+ 
+@@ -2179,18 +2194,14 @@ int mwifiex_ret_802_11_scan(struct mwifi
+ 
+ 		if (chan_band_tlv && adapter->nd_info) {
+ 			adapter->nd_info->matches[idx] =
+-				kzalloc(sizeof(*pmatch) +
+-				sizeof(u32), GFP_ATOMIC);
++				kzalloc(sizeof(*pmatch) + sizeof(u32),
++					GFP_ATOMIC);
+ 
+ 			pmatch = adapter->nd_info->matches[idx];
+ 
+ 			if (pmatch) {
+-				memset(pmatch, 0, sizeof(*pmatch));
+-				if (chan_band_tlv) {
+-					pmatch->n_channels = 1;
+-					pmatch->channels[0] =
+-						chan_band->chan_number;
+-				}
++				pmatch->n_channels = 1;
++				pmatch->channels[0] = chan_band->chan_number;
+ 			}
+ 		}
+ 
+@@ -2761,6 +2772,7 @@ static int mwifiex_scan_specific_ssid(st
+ 	if (!scan_cfg)
+ 		return -ENOMEM;
+ 
++	ether_addr_copy(scan_cfg->random_mac, priv->random_mac);
+ 	scan_cfg->ssid_list = req_ssid;
+ 	scan_cfg->num_ssids = 1;
+ 
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sdio.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sdio.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sdio.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sdio.c	2016-10-26 18:17:41.000000000 +0900
+@@ -122,9 +122,11 @@ static int mwifiex_sdio_probe_of(struct 
+ 					       IRQF_TRIGGER_LOW,
+ 					       "wifi_wake", cfg);
+ 			if (ret) {
+-				dev_err(dev,
++				dev_dbg(dev,
+ 					"Failed to request irq_wifi %d (%d)\n",
+ 					cfg->irq_wifi, ret);
++				card->plt_wake_cfg = NULL;
++				return 0;
+ 			}
+ 			disable_irq(cfg->irq_wifi);
+ 		}
+@@ -289,7 +291,7 @@ mwifiex_sdio_remove(struct sdio_func *fu
+ 
+ 	mwifiex_dbg(adapter, INFO, "info: SDIO func num=%d\n", func->num);
+ 
+-	if (user_rmmod) {
++	if (user_rmmod && !adapter->mfg_mode) {
+ 		if (adapter->is_suspended)
+ 			mwifiex_sdio_resume(adapter->dev);
+ 
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmd.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_cmd.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmd.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_cmd.c	2016-10-26 18:17:41.000000000 +0900
+@@ -598,6 +598,11 @@ static int mwifiex_set_aes_key_v2(struct
+ 		memcpy(km->key_param_set.key_params.cmac_aes.key,
+ 		       enc_key->key_material, enc_key->key_len);
+ 		len += sizeof(struct mwifiex_cmac_aes_param);
++	} else if (enc_key->is_igtk_def_key) {
++		mwifiex_dbg(adapter, INFO,
++			    "%s: Set CMAC default Key index\n", __func__);
++		km->key_param_set.key_type = KEY_TYPE_ID_AES_CMAC_DEF;
++		km->key_param_set.key_idx = enc_key->key_index & KEY_INDEX_MASK;
+ 	} else {
+ 		mwifiex_dbg(adapter, INFO,
+ 			    "%s: Set AES Key\n", __func__);
+@@ -706,15 +711,10 @@ mwifiex_cmd_802_11_key_material_v2(struc
+ 				    (priv->wep_key_curr_index & KEY_INDEX_MASK))
+ 					key_info |= KEY_DEFAULT;
+ 			} else {
+-				if (mac) {
+-					if (is_broadcast_ether_addr(mac))
+-						key_info |= KEY_MCAST;
+-					else
+-						key_info |= KEY_UNICAST |
+-							    KEY_DEFAULT;
+-				} else {
++				if (is_broadcast_ether_addr(mac))
+ 					key_info |= KEY_MCAST;
+-				}
++				else
++					key_info |= KEY_UNICAST | KEY_DEFAULT;
+ 			}
+ 		}
+ 		km->key_param_set.key_info = cpu_to_le16(key_info);
+@@ -1244,20 +1244,23 @@ mwifiex_cmd_pcie_host_spec(struct mwifie
+ 		return 0;
+ 
+ 	/* Send the ring base addresses and count to firmware */
+-	host_spec->txbd_addr_lo = (u32)(card->txbd_ring_pbase);
+-	host_spec->txbd_addr_hi = (u32)(((u64)card->txbd_ring_pbase)>>32);
+-	host_spec->txbd_count = MWIFIEX_MAX_TXRX_BD;
+-	host_spec->rxbd_addr_lo = (u32)(card->rxbd_ring_pbase);
+-	host_spec->rxbd_addr_hi = (u32)(((u64)card->rxbd_ring_pbase)>>32);
+-	host_spec->rxbd_count = MWIFIEX_MAX_TXRX_BD;
+-	host_spec->evtbd_addr_lo = (u32)(card->evtbd_ring_pbase);
+-	host_spec->evtbd_addr_hi = (u32)(((u64)card->evtbd_ring_pbase)>>32);
+-	host_spec->evtbd_count = MWIFIEX_MAX_EVT_BD;
++	host_spec->txbd_addr_lo = cpu_to_le32((u32)(card->txbd_ring_pbase));
++	host_spec->txbd_addr_hi =
++			cpu_to_le32((u32)(((u64)card->txbd_ring_pbase) >> 32));
++	host_spec->txbd_count = cpu_to_le32(MWIFIEX_MAX_TXRX_BD);
++	host_spec->rxbd_addr_lo = cpu_to_le32((u32)(card->rxbd_ring_pbase));
++	host_spec->rxbd_addr_hi =
++			cpu_to_le32((u32)(((u64)card->rxbd_ring_pbase) >> 32));
++	host_spec->rxbd_count = cpu_to_le32(MWIFIEX_MAX_TXRX_BD);
++	host_spec->evtbd_addr_lo = cpu_to_le32((u32)(card->evtbd_ring_pbase));
++	host_spec->evtbd_addr_hi =
++			cpu_to_le32((u32)(((u64)card->evtbd_ring_pbase) >> 32));
++	host_spec->evtbd_count = cpu_to_le32(MWIFIEX_MAX_EVT_BD);
+ 	if (card->sleep_cookie_vbase) {
+ 		host_spec->sleep_cookie_addr_lo =
+-						(u32)(card->sleep_cookie_pbase);
+-		host_spec->sleep_cookie_addr_hi =
+-				 (u32)(((u64)(card->sleep_cookie_pbase)) >> 32);
++				cpu_to_le32((u32)(card->sleep_cookie_pbase));
++		host_spec->sleep_cookie_addr_hi = cpu_to_le32((u32)(((u64)
++					(card->sleep_cookie_pbase)) >> 32));
+ 		mwifiex_dbg(priv->adapter, INFO,
+ 			    "sleep_cook_lo phy addr: 0x%x\n",
+ 			    host_spec->sleep_cookie_addr_lo);
+@@ -1482,7 +1485,7 @@ int mwifiex_dnld_dt_cfgdata(struct mwifi
+ 			continue;
+ 
+ 		/* property header is 6 bytes, data must fit in cmd buffer */
+-		if (prop && prop->value && prop->length > 6 &&
++		if (prop->value && prop->length > 6 &&
+ 		    prop->length <= MWIFIEX_SIZE_OF_CMD_BUFFER - S_DS_GEN) {
+ 			ret = mwifiex_send_cmd(priv, HostCmd_CMD_CFG_DATA,
+ 					       HostCmd_ACT_GEN_SET, 0,
+@@ -1596,6 +1599,21 @@ static int mwifiex_cmd_gtk_rekey_offload
+ 	return 0;
+ }
+ 
++static int mwifiex_cmd_chan_region_cfg(struct mwifiex_private *priv,
++				       struct host_cmd_ds_command *cmd,
++				       u16 cmd_action)
++{
++	struct host_cmd_ds_chan_region_cfg *reg = &cmd->params.reg_cfg;
++
++	cmd->command = cpu_to_le16(HostCmd_CMD_CHAN_REGION_CFG);
++	cmd->size = cpu_to_le16(sizeof(*reg) + S_DS_GEN);
++
++	if (cmd_action == HostCmd_ACT_GEN_GET)
++		reg->action = cpu_to_le16(cmd_action);
++
++	return 0;
++}
++
+ static int
+ mwifiex_cmd_coalesce_cfg(struct mwifiex_private *priv,
+ 			 struct host_cmd_ds_command *cmd,
+@@ -2136,6 +2154,9 @@ int mwifiex_sta_prepare_cmd(struct mwifi
+ 		ret = mwifiex_cmd_gtk_rekey_offload(priv, cmd_ptr, cmd_action,
+ 						    data_buf);
+ 		break;
++	case HostCmd_CMD_CHAN_REGION_CFG:
++		ret = mwifiex_cmd_chan_region_cfg(priv, cmd_ptr, cmd_action);
++		break;
+ 	default:
+ 		mwifiex_dbg(priv->adapter, ERROR,
+ 			    "PREP_CMD: unknown cmd- %#x\n", cmd_no);
+@@ -2273,6 +2294,9 @@ int mwifiex_sta_init_cmd(struct mwifiex_
+ 			if (ret)
+ 				return -1;
+ 		}
++
++		mwifiex_send_cmd(priv, HostCmd_CMD_CHAN_REGION_CFG,
++				 HostCmd_ACT_GEN_GET, 0, NULL, true);
+ 	}
+ 
+ 	/* get tx rate */
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c	2016-10-26 18:17:41.000000000 +0900
+@@ -962,7 +962,7 @@ static int mwifiex_ret_uap_sta_list(stru
+ 	int i;
+ 	struct mwifiex_sta_node *sta_node;
+ 
+-	for (i = 0; i < sta_list->sta_count; i++) {
++	for (i = 0; i < (le16_to_cpu(sta_list->sta_count)); i++) {
+ 		sta_node = mwifiex_get_sta_entry(priv, sta_info->mac);
+ 		if (unlikely(!sta_node))
+ 			continue;
+@@ -1022,6 +1022,138 @@ static int mwifiex_ret_robust_coex(struc
+ 	return 0;
+ }
+ 
++static struct ieee80211_regdomain *
++mwifiex_create_custom_regdomain(struct mwifiex_private *priv,
++				u8 *buf, u16 buf_len)
++{
++	u16 num_chan = buf_len / 2;
++	struct ieee80211_regdomain *regd;
++	struct ieee80211_reg_rule *rule;
++	bool new_rule;
++	int regd_size, idx, freq, prev_freq = 0;
++	u32 bw, prev_bw = 0;
++	u8 chflags, prev_chflags = 0, valid_rules = 0;
++
++	if (WARN_ON_ONCE(num_chan > NL80211_MAX_SUPP_REG_RULES))
++		return ERR_PTR(-EINVAL);
++
++	regd_size = sizeof(struct ieee80211_regdomain) +
++		    num_chan * sizeof(struct ieee80211_reg_rule);
++
++	regd = kzalloc(regd_size, GFP_KERNEL);
++	if (!regd)
++		return ERR_PTR(-ENOMEM);
++
++	for (idx = 0; idx < num_chan; idx++) {
++		u8 chan;
++		enum nl80211_band band;
++
++		chan = *buf++;
++		if (!chan) {
++			kfree(regd);
++			return NULL;
++		}
++		chflags = *buf++;
++		band = (chan <= 14) ? NL80211_BAND_2GHZ : NL80211_BAND_5GHZ;
++		freq = ieee80211_channel_to_frequency(chan, band);
++		new_rule = false;
++
++		if (chflags & MWIFIEX_CHANNEL_DISABLED)
++			continue;
++
++		if (band == NL80211_BAND_5GHZ) {
++			if (!(chflags & MWIFIEX_CHANNEL_NOHT80))
++				bw = MHZ_TO_KHZ(80);
++			else if (!(chflags & MWIFIEX_CHANNEL_NOHT40))
++				bw = MHZ_TO_KHZ(40);
++			else
++				bw = MHZ_TO_KHZ(20);
++		} else {
++			if (!(chflags & MWIFIEX_CHANNEL_NOHT40))
++				bw = MHZ_TO_KHZ(40);
++			else
++				bw = MHZ_TO_KHZ(20);
++		}
++
++		if (idx == 0 || prev_chflags != chflags || prev_bw != bw ||
++		    freq - prev_freq > 20) {
++			valid_rules++;
++			new_rule = true;
++		}
++
++		rule = &regd->reg_rules[valid_rules - 1];
++
++		rule->freq_range.end_freq_khz = MHZ_TO_KHZ(freq + 10);
++
++		prev_chflags = chflags;
++		prev_freq = freq;
++		prev_bw = bw;
++
++		if (!new_rule)
++			continue;
++
++		rule->freq_range.start_freq_khz = MHZ_TO_KHZ(freq - 10);
++		rule->power_rule.max_eirp = DBM_TO_MBM(19);
++
++		if (chflags & MWIFIEX_CHANNEL_PASSIVE)
++			rule->flags = NL80211_RRF_NO_IR;
++
++		if (chflags & MWIFIEX_CHANNEL_DFS)
++			rule->flags = NL80211_RRF_DFS;
++
++		rule->freq_range.max_bandwidth_khz = bw;
++	}
++
++	regd->n_reg_rules = valid_rules;
++	regd->alpha2[0] = '9';
++	regd->alpha2[1] = '9';
++
++	return regd;
++}
++
++static int mwifiex_ret_chan_region_cfg(struct mwifiex_private *priv,
++				       struct host_cmd_ds_command *resp)
++{
++	struct host_cmd_ds_chan_region_cfg *reg = &resp->params.reg_cfg;
++	u16 action = le16_to_cpu(reg->action);
++	u16 tlv, tlv_buf_len, tlv_buf_left;
++	struct mwifiex_ie_types_header *head;
++	struct ieee80211_regdomain *regd;
++	u8 *tlv_buf;
++
++	if (action != HostCmd_ACT_GEN_GET)
++		return 0;
++
++	tlv_buf = (u8 *)reg + sizeof(*reg);
++	tlv_buf_left = le16_to_cpu(resp->size) - S_DS_GEN - sizeof(*reg);
++
++	while (tlv_buf_left >= sizeof(*head)) {
++		head = (struct mwifiex_ie_types_header *)tlv_buf;
++		tlv = le16_to_cpu(head->type);
++		tlv_buf_len = le16_to_cpu(head->len);
++
++		if (tlv_buf_left < (sizeof(*head) + tlv_buf_len))
++			break;
++
++		switch (tlv) {
++		case TLV_TYPE_CHAN_ATTR_CFG:
++			mwifiex_dbg_dump(priv->adapter, CMD_D, "CHAN:",
++					 (u8 *)head + sizeof(*head),
++					 tlv_buf_len);
++			regd = mwifiex_create_custom_regdomain(priv,
++				(u8 *)head + sizeof(*head), tlv_buf_len);
++			if (!IS_ERR(regd))
++				priv->adapter->regd = regd;
++			break;
++		}
++
++		tlv_buf += (sizeof(*head) + tlv_buf_len);
++		tlv_buf_left -= (sizeof(*head) + tlv_buf_len);
++	}
++
++	return 0;
++}
++
+ /*
+  * This function handles the command responses.
+  *
+@@ -1239,6 +1371,9 @@ int mwifiex_process_sta_cmdresp(struct m
+ 		break;
+ 	case HostCmd_CMD_GTK_REKEY_OFFLOAD_CFG:
+ 		break;
++	case HostCmd_CMD_CHAN_REGION_CFG:
++		ret = mwifiex_ret_chan_region_cfg(priv, resp);
++		break;
+ 	default:
+ 		mwifiex_dbg(adapter, ERROR,
+ 			    "CMD_RESP: unknown cmd response %#x\n",
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_event.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_event.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_event.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_event.c	2016-10-26 18:17:41.000000000 +0900
+@@ -25,6 +25,99 @@
+ #include "wmm.h"
+ #include "11n.h"
+ 
++#define MWIFIEX_IBSS_CONNECT_EVT_FIX_SIZE    12
++
++static int mwifiex_check_ibss_peer_capabilties(struct mwifiex_private *priv,
++					       struct mwifiex_sta_node *sta_ptr,
++					       struct sk_buff *event)
++{
++	int evt_len, ele_len;
++	u8 *curr;
++	struct ieee_types_header *ele_hdr;
++	struct mwifiex_ie_types_mgmt_frame *tlv_mgmt_frame;
++	const struct ieee80211_ht_cap *ht_cap;
++	const struct ieee80211_vht_cap *vht_cap;
++
++	skb_pull(event, MWIFIEX_IBSS_CONNECT_EVT_FIX_SIZE);
++	evt_len = event->len;
++	curr = event->data;
++
++	mwifiex_dbg_dump(priv->adapter, EVT_D, "ibss peer capabilties:",
++			 event->data, event->len);
++
++	skb_push(event, MWIFIEX_IBSS_CONNECT_EVT_FIX_SIZE);
++
++	tlv_mgmt_frame = (void *)curr;
++	if (evt_len >= sizeof(*tlv_mgmt_frame) &&
++	    le16_to_cpu(tlv_mgmt_frame->header.type) ==
++	    TLV_TYPE_UAP_MGMT_FRAME) {
++		/* Locate curr pointer to the start of beacon tlv,
++		 * timestamp 8 bytes, beacon intervel 2 bytes,
++		 * capability info 2 bytes, totally 12 byte beacon header
++		 */
++		evt_len = le16_to_cpu(tlv_mgmt_frame->header.len);
++		curr += (sizeof(*tlv_mgmt_frame) + 12);
++	} else {
++		mwifiex_dbg(priv->adapter, MSG,
++			    "management frame tlv not found!\n");
++		return 0;
++	}
++
++	while (evt_len >= sizeof(*ele_hdr)) {
++		ele_hdr = (struct ieee_types_header *)curr;
++		ele_len = ele_hdr->len;
++
++		if (evt_len < ele_len + sizeof(*ele_hdr))
++			break;
++
++		switch (ele_hdr->element_id) {
++		case WLAN_EID_HT_CAPABILITY:
++			sta_ptr->is_11n_enabled = true;
++			ht_cap = (void *)(ele_hdr + 2);
++			sta_ptr->max_amsdu = le16_to_cpu(ht_cap->cap_info) &
++				IEEE80211_HT_CAP_MAX_AMSDU ?
++				MWIFIEX_TX_DATA_BUF_SIZE_8K :
++				MWIFIEX_TX_DATA_BUF_SIZE_4K;
++			mwifiex_dbg(priv->adapter, INFO,
++				    "11n enabled!, max_amsdu : %d\n",
++				    sta_ptr->max_amsdu);
++			break;
++
++		case WLAN_EID_VHT_CAPABILITY:
++			sta_ptr->is_11ac_enabled = true;
++			vht_cap = (void *)(ele_hdr + 2);
++			/* check VHT MAXMPDU capability */
++			switch (le32_to_cpu(vht_cap->vht_cap_info) & 0x3) {
++			case IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_11454:
++				sta_ptr->max_amsdu =
++					MWIFIEX_TX_DATA_BUF_SIZE_12K;
++				break;
++			case IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_7991:
++				sta_ptr->max_amsdu =
++					MWIFIEX_TX_DATA_BUF_SIZE_8K;
++				break;
++			case IEEE80211_VHT_CAP_MAX_MPDU_LENGTH_3895:
++				sta_ptr->max_amsdu =
++					MWIFIEX_TX_DATA_BUF_SIZE_4K;
++			default:
++				break;
++			}
++
++			mwifiex_dbg(priv->adapter, INFO,
++				    "11ac enabled!, max_amsdu : %d\n",
++				    sta_ptr->max_amsdu);
++			break;
++		default:
++			break;
++		}
++
++		curr += (ele_len + sizeof(*ele_hdr));
++		evt_len -= (ele_len + sizeof(*ele_hdr));
++	}
++
++	return 0;
++}
++
+ /*
+  * This function resets the connection state.
+  *
+@@ -519,6 +612,8 @@ void mwifiex_bt_coex_wlan_param_update_e
+  *      - EVENT_LINK_QUALITY
+  *      - EVENT_PRE_BEACON_LOST
+  *      - EVENT_IBSS_COALESCED
++ *      - EVENT_IBSS_STA_CONNECT
++ *      - EVENT_IBSS_STA_DISCONNECT
+  *      - EVENT_WEP_ICV_ERR
+  *      - EVENT_BW_CHANGE
+  *      - EVENT_HOSTWAKE_STAIE
+@@ -547,9 +642,11 @@ void mwifiex_bt_coex_wlan_param_update_e
+ int mwifiex_process_sta_event(struct mwifiex_private *priv)
+ {
+ 	struct mwifiex_adapter *adapter = priv->adapter;
+-	int ret = 0;
++	int ret = 0, i;
+ 	u32 eventcause = adapter->event_cause;
+ 	u16 ctrl, reason_code;
++	u8 ibss_sta_addr[ETH_ALEN];
++	struct mwifiex_sta_node *sta_ptr;
+ 
+ 	switch (eventcause) {
+ 	case EVENT_DUMMY_HOST_WAKEUP_SIGNAL:
+@@ -708,7 +805,11 @@ int mwifiex_process_sta_event(struct mwi
+ 
+ 	case EVENT_EXT_SCAN_REPORT:
+ 		mwifiex_dbg(adapter, EVENT, "event: EXT_SCAN Report\n");
+-		if (adapter->ext_scan && !priv->scan_aborting)
++		/* We intend to skip this event during suspend, but handle
++		 * it in interface disabled case
++		 */
++		if (adapter->ext_scan && (!priv->scan_aborting ||
++					  !netif_running(priv->netdev)))
+ 			ret = mwifiex_handle_event_ext_scan_report(priv,
+ 						adapter->event_skb->data);
+ 
+@@ -771,6 +872,39 @@ int mwifiex_process_sta_event(struct mwi
+ 				HostCmd_CMD_802_11_IBSS_COALESCING_STATUS,
+ 				HostCmd_ACT_GEN_GET, 0, NULL, false);
+ 		break;
++	case EVENT_IBSS_STA_CONNECT:
++		ether_addr_copy(ibss_sta_addr, adapter->event_body + 2);
++		mwifiex_dbg(adapter, EVENT, "event: IBSS_STA_CONNECT %pM\n",
++			    ibss_sta_addr);
++		sta_ptr = mwifiex_add_sta_entry(priv, ibss_sta_addr);
++		if (sta_ptr && adapter->adhoc_11n_enabled) {
++			mwifiex_check_ibss_peer_capabilties(priv, sta_ptr,
++							    adapter->event_skb);
++			if (sta_ptr->is_11n_enabled)
++				for (i = 0; i < MAX_NUM_TID; i++)
++					sta_ptr->ampdu_sta[i] =
++					priv->aggr_prio_tbl[i].ampdu_user;
++			else
++				for (i = 0; i < MAX_NUM_TID; i++)
++					sta_ptr->ampdu_sta[i] =
++						BA_STREAM_NOT_ALLOWED;
++			memset(sta_ptr->rx_seq, 0xff, sizeof(sta_ptr->rx_seq));
++		}
++
++		break;
++	case EVENT_IBSS_STA_DISCONNECT:
++		ether_addr_copy(ibss_sta_addr, adapter->event_body + 2);
++		mwifiex_dbg(adapter, EVENT, "event: IBSS_STA_DISCONNECT %pM\n",
++			    ibss_sta_addr);
++		sta_ptr = mwifiex_get_sta_entry(priv, ibss_sta_addr);
++		if (sta_ptr && sta_ptr->is_11n_enabled) {
++			mwifiex_11n_del_rx_reorder_tbl_by_ta(priv,
++							     ibss_sta_addr);
++			mwifiex_del_tx_ba_stream_tbl_by_ra(priv, ibss_sta_addr);
++		}
++		mwifiex_wmm_del_peer_ra_list(priv, ibss_sta_addr);
++		mwifiex_del_sta_entry(priv, ibss_sta_addr);
++		break;
+ 	case EVENT_ADDBA:
+ 		mwifiex_dbg(adapter, EVENT, "event: ADDBA Request\n");
+ 		mwifiex_send_cmd(priv, HostCmd_CMD_11N_ADDBA_RSP,
+@@ -869,6 +1003,12 @@ int mwifiex_process_sta_event(struct mwi
+ 		mwifiex_bt_coex_wlan_param_update_event(priv,
+ 							adapter->event_skb);
+ 		break;
++	case EVENT_RXBA_SYNC:
++		dev_dbg(adapter->dev, "EVENT: RXBA_SYNC\n");
++		mwifiex_11n_rxba_sync_event(priv, adapter->event_body,
++					    adapter->event_skb->len -
++					    sizeof(eventcause));
++		break;
+ 	default:
+ 		mwifiex_dbg(adapter, ERROR, "event: unknown event id: %#x\n",
+ 			    eventcause);
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c	2016-10-26 18:17:41.000000000 +0900
+@@ -574,7 +574,7 @@ int mwifiex_enable_hs(struct mwifiex_ada
+ 
+ 	adapter->hs_activate_wait_q_woken = false;
+ 
+-	memset(&hscfg, 0, sizeof(struct mwifiex_ds_hs_cfg));
++	memset(&hscfg, 0, sizeof(hscfg));
+ 	hscfg.is_invoke_hostcmd = true;
+ 
+ 	adapter->hs_enabling = true;
+@@ -1138,7 +1138,7 @@ int mwifiex_set_encode(struct mwifiex_pr
+ {
+ 	struct mwifiex_ds_encrypt_key encrypt_key;
+ 
+-	memset(&encrypt_key, 0, sizeof(struct mwifiex_ds_encrypt_key));
++	memset(&encrypt_key, 0, sizeof(encrypt_key));
+ 	encrypt_key.key_len = key_len;
+ 	encrypt_key.key_index = key_index;
+ 
+@@ -1180,7 +1180,7 @@ mwifiex_get_ver_ext(struct mwifiex_priva
+ {
+ 	struct mwifiex_ver_ext ver_ext;
+ 
+-	memset(&ver_ext, 0, sizeof(struct host_cmd_ds_version_ext));
++	memset(&ver_ext, 0, sizeof(ver_ext));
+ 	ver_ext.version_str_sel = version_str_sel;
+ 	if (mwifiex_send_cmd(priv, HostCmd_CMD_VERSION_EXT,
+ 			     HostCmd_ACT_GEN_GET, 0, &ver_ext, true))
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/uap_event.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/uap_event.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/uap_event.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/uap_event.c	2016-10-26 18:17:41.000000000 +0900
+@@ -306,7 +306,12 @@ int mwifiex_process_uap_event(struct mwi
+ 		mwifiex_dbg(adapter, EVENT, "event: multi-chan info\n");
+ 		mwifiex_process_multi_chan_event(priv, adapter->event_skb);
+ 		break;
+-
++	case EVENT_RXBA_SYNC:
++		dev_dbg(adapter->dev, "EVENT: RXBA_SYNC\n");
++		mwifiex_11n_rxba_sync_event(priv, adapter->event_body,
++					    adapter->event_skb->len -
++					    sizeof(eventcause));
++		break;
+ 	default:
+ 		mwifiex_dbg(adapter, EVENT,
+ 			    "event: unknown event id: %#x\n", eventcause);
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/usb.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/usb.c	2016-10-26 18:17:41.000000000 +0900
+@@ -273,6 +273,8 @@ static void mwifiex_usb_tx_complete(stru
+ 	} else {
+ 		mwifiex_dbg(adapter, DATA,
+ 			    "%s: DATA\n", __func__);
++		mwifiex_write_data_complete(adapter, context->skb, 0,
++					    urb->status ? -1 : 0);
+ 		for (i = 0; i < MWIFIEX_TX_DATA_PORT; i++) {
+ 			port = &card->port[i];
+ 			if (context->ep == port->tx_data_ep) {
+@@ -282,8 +284,6 @@ static void mwifiex_usb_tx_complete(stru
+ 			}
+ 		}
+ 		adapter->data_sent = false;
+-		mwifiex_write_data_complete(adapter, context->skb, 0,
+-					    urb->status ? -1 : 0);
+ 	}
+ 
+ 	if (card->mc_resync_flag)
+@@ -611,7 +611,7 @@ static void mwifiex_usb_disconnect(struc
+ 	if (!adapter->priv_num)
+ 		return;
+ 
+-	if (user_rmmod) {
++	if (user_rmmod && !adapter->mfg_mode) {
+ #ifdef CONFIG_PM
+ 		if (adapter->is_suspended)
+ 			mwifiex_usb_resume(intf);
+@@ -657,11 +657,8 @@ static int mwifiex_usb_tx_init(struct mw
+ 	card->tx_cmd.ep = card->tx_cmd_ep;
+ 
+ 	card->tx_cmd.urb = usb_alloc_urb(0, GFP_KERNEL);
+-	if (!card->tx_cmd.urb) {
+-		mwifiex_dbg(adapter, ERROR,
+-			    "tx_cmd.urb allocation failed\n");
++	if (!card->tx_cmd.urb)
+ 		return -ENOMEM;
+-	}
+ 
+ 	for (i = 0; i < MWIFIEX_TX_DATA_PORT; i++) {
+ 		port = &card->port[i];
+@@ -677,11 +674,8 @@ static int mwifiex_usb_tx_init(struct mw
+ 			port->tx_data_list[j].ep = port->tx_data_ep;
+ 			port->tx_data_list[j].urb =
+ 					usb_alloc_urb(0, GFP_KERNEL);
+-			if (!port->tx_data_list[j].urb) {
+-				mwifiex_dbg(adapter, ERROR,
+-					    "urb allocation failed\n");
++			if (!port->tx_data_list[j].urb)
+ 				return -ENOMEM;
+-			}
+ 		}
+ 	}
+ 
+@@ -697,10 +691,8 @@ static int mwifiex_usb_rx_init(struct mw
+ 	card->rx_cmd.ep = card->rx_cmd_ep;
+ 
+ 	card->rx_cmd.urb = usb_alloc_urb(0, GFP_KERNEL);
+-	if (!card->rx_cmd.urb) {
+-		mwifiex_dbg(adapter, ERROR, "rx_cmd.urb allocation failed\n");
++	if (!card->rx_cmd.urb)
+ 		return -ENOMEM;
+-	}
+ 
+ 	card->rx_cmd.skb = dev_alloc_skb(MWIFIEX_RX_CMD_BUF_SIZE);
+ 	if (!card->rx_cmd.skb)
+@@ -714,11 +706,8 @@ static int mwifiex_usb_rx_init(struct mw
+ 		card->rx_data_list[i].ep = card->rx_data_ep;
+ 
+ 		card->rx_data_list[i].urb = usb_alloc_urb(0, GFP_KERNEL);
+-		if (!card->rx_data_list[i].urb) {
+-			mwifiex_dbg(adapter, ERROR,
+-				    "rx_data_list[] urb allocation failed\n");
++		if (!card->rx_data_list[i].urb)
+ 			return -1;
+-		}
+ 		if (mwifiex_usb_submit_rx_urb(&card->rx_data_list[i],
+ 					      MWIFIEX_RX_DATA_BUF_SIZE))
+ 			return -1;
+@@ -852,7 +841,7 @@ static int mwifiex_usb_host_to_card(stru
+ 	struct usb_tx_data_port *port = NULL;
+ 	u8 *data = (u8 *)skb->data;
+ 	struct urb *tx_urb;
+-	int idx, ret;
++	int idx, ret = -EINPROGRESS;
+ 
+ 	if (adapter->is_suspended) {
+ 		mwifiex_dbg(adapter, ERROR,
+@@ -876,8 +865,9 @@ static int mwifiex_usb_host_to_card(stru
+ 				if (atomic_read(&port->tx_data_urb_pending)
+ 				    >= MWIFIEX_TX_DATA_URB) {
+ 					port->block_status = true;
+-					ret = -EBUSY;
+-					goto done;
++					adapter->data_sent =
++						mwifiex_usb_data_sent(adapter);
++					return -EBUSY;
+ 				}
+ 				if (port->tx_data_ix >= MWIFIEX_TX_DATA_URB)
+ 					port->tx_data_ix = 0;
+@@ -908,6 +898,14 @@ static int mwifiex_usb_host_to_card(stru
+ 	else
+ 		atomic_inc(&port->tx_data_urb_pending);
+ 
++	if (ep != card->tx_cmd_ep &&
++	    atomic_read(&port->tx_data_urb_pending) ==
++					MWIFIEX_TX_DATA_URB) {
++		port->block_status = true;
++		adapter->data_sent = mwifiex_usb_data_sent(adapter);
++		ret = -ENOSR;
++	}
++
+ 	if (usb_submit_urb(tx_urb, GFP_ATOMIC)) {
+ 		mwifiex_dbg(adapter, ERROR,
+ 			    "%s: usb_submit_urb failed\n", __func__);
+@@ -916,29 +914,15 @@ static int mwifiex_usb_host_to_card(stru
+ 		} else {
+ 			atomic_dec(&port->tx_data_urb_pending);
+ 			port->block_status = false;
++			adapter->data_sent = false;
+ 			if (port->tx_data_ix)
+ 				port->tx_data_ix--;
+ 			else
+ 				port->tx_data_ix = MWIFIEX_TX_DATA_URB;
+ 		}
+-
+-		return -1;
+-	} else {
+-		if (ep != card->tx_cmd_ep &&
+-		    atomic_read(&port->tx_data_urb_pending) ==
+-							MWIFIEX_TX_DATA_URB) {
+-			port->block_status = true;
+-			ret = -ENOSR;
+-			goto done;
+-		}
++		ret = -1;
+ 	}
+ 
+-	return -EINPROGRESS;
+-
+-done:
+-	if (ep != card->tx_cmd_ep)
+-		adapter->data_sent = mwifiex_usb_data_sent(adapter);
+-
+ 	return ret;
+ }
+ 
+@@ -1037,6 +1021,10 @@ static int mwifiex_prog_fw_w_helper(stru
+ 			dnld_cmd = le32_to_cpu(fwdata->fw_hdr.dnld_cmd);
+ 			tlen += sizeof(struct fw_header);
+ 
++			/* Command 7 doesn't have data length field */
++			if (dnld_cmd == FW_CMD_7)
++				dlen = 0;
++
+ 			memcpy(fwdata->data, &firmware[tlen], dlen);
+ 
+ 			fwdata->seq_num = cpu_to_le32(fw_seqnum);
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/usb.h
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.h	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/usb.h	2016-10-26 18:17:41.000000000 +0900
+@@ -46,11 +46,12 @@
+ #define USB8766_DEFAULT_FW_NAME	"mrvl/usb8766_uapsta.bin"
+ #define USB8797_DEFAULT_FW_NAME	"mrvl/usb8797_uapsta.bin"
+ #define USB8801_DEFAULT_FW_NAME	"mrvl/usb8801_uapsta.bin"
+-#define USB8997_DEFAULT_FW_NAME	"mrvl/usb8997_uapsta.bin"
++#define USB8997_DEFAULT_FW_NAME	"mrvl/usbusb8997_combo_v4.bin"
+ 
+ #define FW_DNLD_TX_BUF_SIZE	620
+ #define FW_DNLD_RX_BUF_SIZE	2048
+ #define FW_HAS_LAST_BLOCK	0x00000004
++#define FW_CMD_7		0x00000007
+ 
+ #define FW_DATA_XMIT_SIZE \
+ 	(sizeof(struct fw_header) + dlen + sizeof(u32))
+diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/util.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/util.c
+--- ./wifi_a/drivers/net/wireless/marvell/mwifiex/util.c	2016-10-22 19:41:00.000000000 +0900
++++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/util.c	2016-10-26 18:17:41.000000000 +0900
+@@ -386,6 +386,7 @@ mwifiex_parse_mgmt_packet(struct mwifiex
+ 				    "unknown public action frame category %d\n",
+ 				    category);
+ 		}
++		break;
+ 	default:
+ 		mwifiex_dbg(priv->adapter, INFO,
+ 		    "unknown mgmt frame subtype %#x\n", stype);
