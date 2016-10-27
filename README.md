@@ -42,14 +42,27 @@ Then, to build the package, simply run (as usual):
 
 	makepkg
 
-## Optimising laptop battery life / performance
+## Configurations
+
+This is not really things of kernel but leave here just to help setting up later.
+
+### Optimising laptop battery life / performance
 
   I recommend that you install powertop, configure it, and run it on boot as a systemd process. See the Arch wiki for more. With powertop enabled, I attain battery life comparable to that of Windows.
 
-## Reliable LID status update
+### Reliable LID status update
 
 If LID status gets wrong after hibernation like,
 
 - nothing happens after the first awaken from hibernation
 
 add `button.lid_init_state=open` kernel parameter to your boot-loader.
+
+### NetworkManager fails to connect with message '<warn> (wlp2s0): DHCPv4 request timed out.'
+
+install **dhclient** and use dhclient to get ip
+
+```
+# /etc/NetworkManager/NetworkManager.conf
+dhcp=dhclient
+```
