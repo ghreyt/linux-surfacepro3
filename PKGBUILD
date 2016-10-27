@@ -24,6 +24,7 @@ source=("https://www.kernel.org/pub/linux/kernel/v4.x/${_srcname}.tar.xz"
         # XXX:surfacepro3 {
         # order in applying
 	'wifi.patch'
+        'wifi_4.9-rc2.patch'
         'multitouch.patch'
 	'touchscreen_multitouch.patch'
         # XXX:surfacepro3 }
@@ -39,6 +40,7 @@ sha256sums=('3e9150065f193d3d94bcf46a1fe9f033c7ef7122ab71d75a7fb5a2f0c9a7e11a'
             '1256b241cd477b265a3c2d64bdc19ffe3c9bbcee82ea3994c590c2c76e767d99'
             # XXX:surfacepro3 {
             'f4994e5bd7518118d43dceca4f20b36c713c856a414340e1d611428d46334ffe'
+            'e15e63e5a787c12ffec4a2b5cf7f5d11765ea45764f979853a3147a1fee9a7db'
             'e41babe517c726c6fa837103c03c569beb74126bff09cca8e493832e29541245'
             '9905538886f8e8ecbb56976c34b56a3ecb3bb73ffb9ae50a94cc137ee896de6c'
             # XXX:surfacepro3 }
@@ -67,8 +69,11 @@ prepare() {
 
   # XXX:surfacepro3 {
   # This patch disables some wireless optimisations which cause trouble on Surface devices.
-  # TODO remove this patch, it seems resolve the problem from kernel 4.9 (https://bugzilla.kernel.org/show_bug.cgi?id=109681)
-  patch -p1 -i "${srcdir}/wifi.patch"
+  # It uses mwifiex driver of linux-4.9-rc2 by default which seems more stable than the patch 'wifi.patch'
+  # Use 'wifi.patch' if you find any problem with it.
+  # Note that you can you only one of 'wifi_4.9-rc2.patch' or 'wifi.patch'
+  #patch -p1 -i "${srcdir}/wifi.patch"
+  patch -p1 -i "${srcdir}/wifi_4.9-rc2.patch"
 
   # This patch adds multitouch support for the surface pro 3
   # keyboard cover.

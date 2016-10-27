@@ -6,7 +6,7 @@ This is based on the offical Linux kernel package provided by Arch Linux at: htt
 Most of the hardware functionality of the Surface Pro 3 has now been mainlined, and essentially everything should now work out of the box. As of linux version 4.6, this version of the kernel only adds the following:
  - Proper multitouch support for the Type Cover 3, allowing two-finger scroll (etc): https://raw.githubusercontent.com/shvr/fedora-surface-pro-3-kernel/master/Add-multitouch-support-for-Microsoft-Type-Cover-3.patch .
  - Some small fixes that work around quirks in the hardware of the touchscreen.
- - Disabling of some WiFi power management features, which are known to cause problems on Surface devices (thanks `colorprint`): https://bugzilla.kernel.org/show_bug.cgi?id=109681 .
+ - replaced with **mwifiex** of **linux-4.9-rc2** ~~Disabling of some WiFi power management features, which are known to cause problems on Surface devices (thanks `colorprint`): https://bugzilla.kernel.org/show_bug.cgi?id=109681 .~~
 
 This package is no longer essential to surface pro 3 users, and hopefully will not be required within the next few kernel releases.
 
@@ -15,6 +15,16 @@ This AUR package adds the following patches to the official Linux kernel package
  - Multitouch patches from https://raw.githubusercontent.com/shvr/fedora-surface-pro-3-kernel/master/Add-multitouch-support-for-Microsoft-Type-Cover-3.patch .
 
 Most of the functionality required for the Surface Pro 3 has now been mainlined, so hopefully this package will no longer be required within the next few kernel releases.
+
+## Changes
+
+### v4.8
+
+- based on linux-4.8.4
+- added `wifi_4.9-rc2.patch` instead of `wifi.patch`
+    - `wifi_4.9-rc.patch` apply **mwifiex** of **linux-4.9-rc2** which seems more stable
+    - I've tried `wifi.patch` but not reliable for linux-4.8.4
+    - but still you can choose to use `wifi.patch` uncommenting `wifi.patch` and commenting `wifi_4.9-rc2.patch` in **PKGBUILD**
 
 ## Building
 
@@ -32,6 +42,6 @@ Then, to build the package, simply run (as usual):
 
 	makepkg
 
-  ## Optimising laptop battery life / performance
+## Optimising laptop battery life / performance
 
   I recommend that you install powertop, configure it, and run it on boot as a systemd process. See the Arch wiki for more. With powertop enabled, I attain battery life comparable to that of Windows.
