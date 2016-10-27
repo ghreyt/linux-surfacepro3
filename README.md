@@ -45,3 +45,11 @@ Then, to build the package, simply run (as usual):
 ## Optimising laptop battery life / performance
 
   I recommend that you install powertop, configure it, and run it on boot as a systemd process. See the Arch wiki for more. With powertop enabled, I attain battery life comparable to that of Windows.
+
+## Reliable LID status update
+
+If LID status gets wrong after hibernation like,
+
+- nothing happens after the first awaken from hibernation
+
+add `button.lid_init_state=open` kernel parameter to your boot-loader.
