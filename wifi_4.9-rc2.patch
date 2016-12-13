@@ -1,6 +1,6 @@
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11h.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/11h.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/11h.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/11h.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/11h.c b/drivers/net/wireless/marvell/mwifiex/11h.c
+--- a/drivers/net/wireless/marvell/mwifiex/11h.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/11h.c	2016-10-26 18:17:41.000000000 +0900
 @@ -260,22 +260,17 @@ int mwifiex_11h_handle_radar_detected(st
  
  	rdr_event = (void *)(skb->data + sizeof(u32));
@@ -35,9 +35,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11h.c ./wifi_b/drivers/
  
  	return 0;
  }
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n.h
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n.h	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n.h	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/11n.h b/drivers/net/wireless/marvell/mwifiex/11n.h
+--- a/drivers/net/wireless/marvell/mwifiex/11n.h	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/11n.h	2016-10-26 18:17:41.000000000 +0900
 @@ -171,9 +171,10 @@ mwifiex_find_stream_to_delete(struct mwi
  static inline int mwifiex_is_sta_11n_enabled(struct mwifiex_private *priv,
  					     struct mwifiex_sta_node *node)
@@ -52,9 +52,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n.h ./wifi_b/drivers/
  		return 0;
  
  	return node->is_11n_enabled;
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c
+--- a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c	2016-10-26 18:17:41.000000000 +0900
 @@ -78,8 +78,15 @@ static int mwifiex_11n_dispatch_amsdu_pk
   */
  static int mwifiex_11n_dispatch_pkt(struct mwifiex_private *priv, void *payload)
@@ -145,9 +145,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.c ./wifi_
 +		tlv_rxba = (struct mwifiex_ie_types_rxba_sync *)tmp;
 +	}
 +}
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h
+--- a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h	2016-10-26 18:17:41.000000000 +0900
 @@ -81,5 +81,6 @@ struct mwifiex_rx_reorder_tbl *
  mwifiex_11n_get_rx_reorder_tbl(struct mwifiex_private *priv, int tid, u8 *ta);
  void mwifiex_11n_del_rx_reorder_tbl_by_ta(struct mwifiex_private *priv, u8 *ta);
@@ -156,9 +156,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/11n_rxreorder.h ./wifi_
 +void mwifiex_11n_rxba_sync_event(struct mwifiex_private *priv,
 +				 u8 *event_buf, u16 len);
  #endif /* _MWIFIEX_11N_RXREORDER_H_ */
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/cfg80211.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/cfg80211.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/cfg80211.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/cfg80211.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/cfg80211.c b/drivers/net/wireless/marvell/mwifiex/cfg80211.c
+--- a/drivers/net/wireless/marvell/mwifiex/cfg80211.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/cfg80211.c	2016-10-26 18:17:41.000000000 +0900
 @@ -484,6 +484,29 @@ mwifiex_cfg80211_add_key(struct wiphy *w
  }
  
@@ -398,9 +398,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/cfg80211.c ./wifi_b/dri
  		}
  	}
  
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/cmdevt.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/cmdevt.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/cmdevt.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/cmdevt.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/cmdevt.c b/drivers/net/wireless/marvell/mwifiex/cmdevt.c
+--- a/drivers/net/wireless/marvell/mwifiex/cmdevt.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/cmdevt.c	2016-10-26 18:17:41.000000000 +0900
 @@ -480,13 +480,27 @@ int mwifiex_free_cmd_buffer(struct mwifi
   */
  int mwifiex_process_event(struct mwifiex_adapter *adapter)
@@ -446,9 +446,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/cmdevt.c ./wifi_b/drive
  
  	/* Get a new command node */
  	cmd_node = mwifiex_get_cmd_node(adapter);
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/debugfs.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/debugfs.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/debugfs.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/debugfs.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/debugfs.c b/drivers/net/wireless/marvell/mwifiex/debugfs.c
+--- a/drivers/net/wireless/marvell/mwifiex/debugfs.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/debugfs.c	2016-10-26 18:17:41.000000000 +0900
 @@ -118,6 +118,8 @@ mwifiex_info_read(struct file *file, cha
  		p += sprintf(p, "bssid=\"%pM\"\n", info.bssid);
  		p += sprintf(p, "channel=\"%d\"\n", (int) info.bss_chan);
@@ -458,9 +458,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/debugfs.c ./wifi_b/driv
  
  		netdev_for_each_mc_addr(ha, netdev)
  			p += sprintf(p, "multicast_address[%d]=\"%pM\"\n",
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/fw.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/fw.h
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/fw.h	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/fw.h	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/fw.h b/drivers/net/wireless/marvell/mwifiex/fw.h
+--- a/drivers/net/wireless/marvell/mwifiex/fw.h	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/fw.h	2016-10-26 18:17:41.000000000 +0900
 @@ -78,6 +78,7 @@ enum KEY_TYPE_ID {
  	KEY_TYPE_ID_AES,
  	KEY_TYPE_ID_WAPI,
@@ -670,9 +670,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/fw.h ./wifi_b/drivers/n
  	} params;
  } __packed;
  
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/init.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/init.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/init.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/init.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/init.c b/drivers/net/wireless/marvell/mwifiex/init.c
+--- a/drivers/net/wireless/marvell/mwifiex/init.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/init.c	2016-10-26 18:17:41.000000000 +0900
 @@ -298,6 +298,7 @@ static void mwifiex_init_adapter(struct 
  	memset(&adapter->arp_filter, 0, sizeof(adapter->arp_filter));
  	adapter->arp_filter_size = 0;
@@ -711,9 +711,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/init.c ./wifi_b/drivers
  		}
  	}
  
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/ioctl.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/ioctl.h
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/ioctl.h	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/ioctl.h	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/ioctl.h b/drivers/net/wireless/marvell/mwifiex/ioctl.h
+--- a/drivers/net/wireless/marvell/mwifiex/ioctl.h	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/ioctl.h	2016-10-26 18:17:41.000000000 +0900
 @@ -260,6 +260,7 @@ struct mwifiex_ds_encrypt_key {
  	u8 is_igtk_key;
  	u8 is_current_wep_key;
@@ -722,9 +722,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/ioctl.h ./wifi_b/driver
  };
  
  struct mwifiex_power_cfg {
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/join.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/join.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/join.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/join.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/join.c b/drivers/net/wireless/marvell/mwifiex/join.c
+--- a/drivers/net/wireless/marvell/mwifiex/join.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/join.c	2016-10-26 18:17:41.000000000 +0900
 @@ -669,9 +669,8 @@ int mwifiex_ret_802_11_associate(struct 
  	priv->assoc_rsp_size = min(le16_to_cpu(resp->size) - S_DS_GEN,
  				   sizeof(priv->assoc_rsp_buf));
@@ -736,9 +736,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/join.c ./wifi_b/drivers
  
  	if (status_code) {
  		priv->adapter->dbg.num_cmd_assoc_failure++;
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/main.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/main.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/main.c b/drivers/net/wireless/marvell/mwifiex/main.c
+--- a/drivers/net/wireless/marvell/mwifiex/main.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/main.c	2016-10-26 18:17:41.000000000 +0900
 @@ -23,6 +23,7 @@
  #include "11n.h"
  
@@ -1070,9 +1070,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.c ./wifi_b/drivers
  		pr_err("%s: firmware init failed\n", __func__);
  		goto err_init_fw;
  	}
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/main.h
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.h	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/main.h	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/main.h b/drivers/net/wireless/marvell/mwifiex/main.h
+--- a/drivers/net/wireless/marvell/mwifiex/main.h	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/main.h	2016-10-26 18:17:41.000000000 +0900
 @@ -58,6 +58,7 @@
  #include "sdio.h"
  
@@ -1120,9 +1120,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/main.h ./wifi_b/drivers
  #endif
 +void mwifiex_do_flr(struct mwifiex_adapter *adapter, bool prepare);
  #endif /* !_MWIFIEX_MAIN_H_ */
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/pcie.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/pcie.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/pcie.c b/drivers/net/wireless/marvell/mwifiex/pcie.c
+--- a/drivers/net/wireless/marvell/mwifiex/pcie.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/pcie.c	2016-10-26 18:17:41.000000000 +0900
 @@ -225,7 +225,7 @@ static void mwifiex_pcie_remove(struct p
  	if (!adapter || !adapter->priv_num)
  		return;
@@ -1392,9 +1392,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.c ./wifi_b/drivers
  };
  
  /*
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/pcie.h
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.h	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/pcie.h	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/pcie.h b/drivers/net/wireless/marvell/mwifiex/pcie.h
+--- a/drivers/net/wireless/marvell/mwifiex/pcie.h	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/pcie.h	2016-10-26 18:17:41.000000000 +0900
 @@ -32,11 +32,9 @@
  #define PCIE8897_DEFAULT_FW_NAME "mrvl/pcie8897_uapsta.bin"
  #define PCIE8897_A0_FW_NAME "mrvl/pcie8897_uapsta_a0.bin"
@@ -1423,9 +1423,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/pcie.h ./wifi_b/drivers
  
  /* Constants for Buffer Descriptor (BD) rings */
  #define MWIFIEX_MAX_TXRX_BD			0x20
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/scan.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/scan.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/scan.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/scan.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/scan.c b/drivers/net/wireless/marvell/mwifiex/scan.c
+--- a/drivers/net/wireless/marvell/mwifiex/scan.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/scan.c	2016-10-26 18:17:41.000000000 +0900
 @@ -820,6 +820,7 @@ mwifiex_config_scan(struct mwifiex_priva
  	struct mwifiex_adapter *adapter = priv->adapter;
  	struct mwifiex_ie_types_num_probes *num_probes_tlv;
@@ -1500,9 +1500,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/scan.c ./wifi_b/drivers
  	scan_cfg->ssid_list = req_ssid;
  	scan_cfg->num_ssids = 1;
  
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sdio.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sdio.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sdio.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sdio.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/sdio.c b/drivers/net/wireless/marvell/mwifiex/sdio.c
+--- a/drivers/net/wireless/marvell/mwifiex/sdio.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/sdio.c	2016-10-26 18:17:41.000000000 +0900
 @@ -122,9 +122,11 @@ static int mwifiex_sdio_probe_of(struct 
  					       IRQF_TRIGGER_LOW,
  					       "wifi_wake", cfg);
@@ -1525,9 +1525,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sdio.c ./wifi_b/drivers
  		if (adapter->is_suspended)
  			mwifiex_sdio_resume(adapter->dev);
  
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmd.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_cmd.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmd.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_cmd.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/sta_cmd.c b/drivers/net/wireless/marvell/mwifiex/sta_cmd.c
+--- a/drivers/net/wireless/marvell/mwifiex/sta_cmd.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/sta_cmd.c	2016-10-26 18:17:41.000000000 +0900
 @@ -598,6 +598,11 @@ static int mwifiex_set_aes_key_v2(struct
  		memcpy(km->key_param_set.key_params.cmac_aes.key,
  		       enc_key->key_material, enc_key->key_len);
@@ -1646,9 +1646,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmd.c ./wifi_b/driv
  	}
  
  	/* get tx rate */
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c b/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c
+--- a/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c	2016-10-26 18:17:41.000000000 +0900
 @@ -962,7 +962,7 @@ static int mwifiex_ret_uap_sta_list(stru
  	int i;
  	struct mwifiex_sta_node *sta_node;
@@ -1807,9 +1807,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_cmdresp.c ./wifi_b/
  	default:
  		mwifiex_dbg(adapter, ERROR,
  			    "CMD_RESP: unknown cmd response %#x\n",
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_event.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_event.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_event.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_event.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/sta_event.c b/drivers/net/wireless/marvell/mwifiex/sta_event.c
+--- a/drivers/net/wireless/marvell/mwifiex/sta_event.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/sta_event.c	2016-10-26 18:17:41.000000000 +0900
 @@ -25,6 +25,99 @@
  #include "wmm.h"
  #include "11n.h"
@@ -1998,9 +1998,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_event.c ./wifi_b/dr
  	default:
  		mwifiex_dbg(adapter, ERROR, "event: unknown event id: %#x\n",
  			    eventcause);
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c b/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c
+--- a/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c	2016-10-26 18:17:41.000000000 +0900
 @@ -574,7 +574,7 @@ int mwifiex_enable_hs(struct mwifiex_ada
  
  	adapter->hs_activate_wait_q_woken = false;
@@ -2028,9 +2028,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/sta_ioctl.c ./wifi_b/dr
  	ver_ext.version_str_sel = version_str_sel;
  	if (mwifiex_send_cmd(priv, HostCmd_CMD_VERSION_EXT,
  			     HostCmd_ACT_GEN_GET, 0, &ver_ext, true))
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/uap_event.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/uap_event.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/uap_event.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/uap_event.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/uap_event.c b/drivers/net/wireless/marvell/mwifiex/uap_event.c
+--- a/drivers/net/wireless/marvell/mwifiex/uap_event.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/uap_event.c	2016-10-26 18:17:41.000000000 +0900
 @@ -306,7 +306,12 @@ int mwifiex_process_uap_event(struct mwi
  		mwifiex_dbg(adapter, EVENT, "event: multi-chan info\n");
  		mwifiex_process_multi_chan_event(priv, adapter->event_skb);
@@ -2045,9 +2045,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/uap_event.c ./wifi_b/dr
  	default:
  		mwifiex_dbg(adapter, EVENT,
  			    "event: unknown event id: %#x\n", eventcause);
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/usb.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/usb.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/usb.c b/drivers/net/wireless/marvell/mwifiex/usb.c
+--- a/drivers/net/wireless/marvell/mwifiex/usb.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/usb.c	2016-10-26 18:17:41.000000000 +0900
 @@ -273,6 +273,8 @@ static void mwifiex_usb_tx_complete(stru
  	} else {
  		mwifiex_dbg(adapter, DATA,
@@ -2205,9 +2205,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.c ./wifi_b/drivers/
  			memcpy(fwdata->data, &firmware[tlen], dlen);
  
  			fwdata->seq_num = cpu_to_le32(fw_seqnum);
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.h ./wifi_b/drivers/net/wireless/marvell/mwifiex/usb.h
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.h	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/usb.h	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/usb.h b/drivers/net/wireless/marvell/mwifiex/usb.h
+--- a/drivers/net/wireless/marvell/mwifiex/usb.h	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/usb.h	2016-10-26 18:17:41.000000000 +0900
 @@ -46,11 +46,12 @@
  #define USB8766_DEFAULT_FW_NAME	"mrvl/usb8766_uapsta.bin"
  #define USB8797_DEFAULT_FW_NAME	"mrvl/usb8797_uapsta.bin"
@@ -2222,9 +2222,9 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/usb.h ./wifi_b/drivers/
  
  #define FW_DATA_XMIT_SIZE \
  	(sizeof(struct fw_header) + dlen + sizeof(u32))
-diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/util.c ./wifi_b/drivers/net/wireless/marvell/mwifiex/util.c
---- ./wifi_a/drivers/net/wireless/marvell/mwifiex/util.c	2016-10-22 19:41:00.000000000 +0900
-+++ ./wifi_b/drivers/net/wireless/marvell/mwifiex/util.c	2016-10-26 18:17:41.000000000 +0900
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/util.c b/drivers/net/wireless/marvell/mwifiex/util.c
+--- a/drivers/net/wireless/marvell/mwifiex/util.c	2016-10-22 19:41:00.000000000 +0900
++++ b/drivers/net/wireless/marvell/mwifiex/util.c	2016-10-26 18:17:41.000000000 +0900
 @@ -386,6 +386,7 @@ mwifiex_parse_mgmt_packet(struct mwifiex
  				    "unknown public action frame category %d\n",
  				    category);
@@ -2233,3 +2233,14 @@ diff -rupN ./wifi_a/drivers/net/wireless/marvell/mwifiex/util.c ./wifi_b/drivers
  	default:
  		mwifiex_dbg(priv->adapter, INFO,
  		    "unknown mgmt frame subtype %#x\n", stype);
+diff -rupN a/drivers/net/wireless/marvell/mwifiex/11n_aggr.c b/drivers/net/wireless/marvell/mwifiex/11n_aggr.c
+--- a/drivers/net/wireless/marvell/mwifiex/11n_aggr.c
++++ b/drivers/net/wireless/marvell/mwifiex/11n_aggr.c
+@@ -190,7 +190,6 @@
+ 				       ra_list_flags);
+ 		return -1;
+ 	}
+-	skb_reserve(skb_aggr, MWIFIEX_MIN_DATA_HEADER_LEN);
+ 	tx_info_aggr =  MWIFIEX_SKB_TXCB(skb_aggr);
+ 
+ 	memset(tx_info_aggr, 0, sizeof(*tx_info_aggr));
